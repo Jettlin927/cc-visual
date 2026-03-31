@@ -3,11 +3,13 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { readdir, readFile, stat } from 'fs/promises';
 import { watch } from 'fs';
+import { homedir } from 'os';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3333;
-const CLAUDE_DIR = join(process.env.HOME, '.claude');
+const CLAUDE_DIR = join(homedir(), '.claude');
+const SESSIONS_DIR = join(CLAUDE_DIR, 'sessions');
 const ACTIVE_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
 
 app.use(express.static(join(__dirname, 'public')));
@@ -97,46 +99,63 @@ app.get('/api/watch-active', (req, res) => {
 });
 
 // ---- Helpers ----
-async function enrichSession(p) {
-  const tail = await readTail(p.filePath, 80);
+
+// Returns Set<sessionId> for all Claude processes currently alive
+async function loadAliveSessions() {
+  const alive = new Set();
+  try {
+    const files = await readdir(SESSIONS_DIR);
+    for (const f of files.filter(f => f.endsWith('.json'))) {
+      try {
+        const raw = await readFile(join(SESSIONS_DIR, f), 'utf-8');
+        const { pid, sessionId } = JSON.parse(raw);
+        if (!sessionId || !pid) continue;
+        try { process.kill(pid, 0); alive.add(sessionId); } catch {}
+      } catch {}
+    }
+  } catch {}
+  return alive;
+}
+
+async function enrichSession(p, alive) {
+  const tail = await readTail(p.filePath, 150);
   const lastTool = extractLatestToolCall(tail);
-  const status = detectStatus(tail, lastTool);
+  const status = detectStatus(tail, lastTool, alive.has(p.sessionId));
   const toolCount = countTools(tail);
   return { ...p, lastTool, status, toolCount };
 }
 
 // Detect: running | waiting | idle
-const WAITING_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
+// isAlive: whether the Claude process for this session is running
+function detectStatus(entries, lastTool, isAlive) {
+  // Process is dead → idle regardless of JSONL content
+  if (!isAlive) return 'idle';
 
-function detectStatus(entries, lastTool) {
-  // Unfinished tool call → definitely running
+  // Process alive + unfinished tool call → running
   if (lastTool?.status === 'running') return 'running';
 
   const toArr = (c) => Array.isArray(c) ? c : [];
   const sig = entries.filter(e => e.type === 'assistant' || e.type === 'user');
-  if (!sig.length) return 'idle';
+  // Process alive but JSONL has no content yet → just started
+  if (!sig.length) return 'running';
 
   const last = sig[sig.length - 1];
-  const lastTs = last.timestamp ? new Date(last.timestamp).getTime() : 0;
-  const age = Date.now() - lastTs;
 
   if (last.type === 'assistant') {
     const content = toArr(last.message?.content);
-    // Still has unresolved tool_use → running
+    // Unresolved tool_use → running
     if (content.some(b => b?.type === 'tool_use')) return 'running';
-    // Claude sent a text reply — only "waiting" if it was recent
-    return age < WAITING_THRESHOLD_MS ? 'waiting' : 'idle';
+    // Pure text reply → Claude finished, waiting for human input
+    return 'waiting';
   }
 
   if (last.type === 'user') {
-    const content = toArr(last.message?.content);
-    // User just sent a human message → Claude is processing → running
-    if (content.some(b => b?.type === 'text')) return 'running';
-    // Only tool_results → Claude is still processing tools
+    // tool_result or human text → Claude is processing
     return 'running';
   }
 
-  return 'idle';
+  // Process alive, conservative fallback
+  return 'running';
 }
 
 function countTools(entries) {
