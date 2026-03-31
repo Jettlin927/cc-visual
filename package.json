@@ -1,0 +1,16 @@
+{
+  "name": "claude-visual",
+  "version": "1.0.0",
+  "description": "Pixel-art real-time visualization dashboard for Claude Code sessions",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "prestart": "test -d node_modules || npm install --silent"
+  },
+  "dependencies": {
+    "express": "^4.21.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Claude Visual — Pixel World</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <!-- HUD Top Bar -->
+  <div id="hud-top">
+    <div class="hud-left">
+      <span class="logo-text">👾 CLAUDE WORLD</span>
+      <span id="active-count" class="hud-badge">0 ACTIVE</span>
+    </div>
+    <div class="hud-right">
+      <span id="hud-time" class="hud-time"></span>
+    </div>
+  </div>
+
+  <!-- Layout: left panel + canvas -->
+  <div id="layout">
+    <!-- Left Session List -->
+    <div id="session-sidebar">
+      <div class="sidebar-header">
+        <span>SESSIONS</span>
+        <span id="sidebar-count" class="sidebar-count">0</span>
+        <button id="sidebar-toggle" class="sidebar-toggle" title="Collapse">◀</button>
+      </div>
+      <div id="session-list"></div>
+    </div>
+
+    <!-- Game Canvas -->
+    <canvas id="game-canvas"></canvas>
+  </div>
+
+  <!-- Right Detail Panel (shown when character is selected) -->
+  <div id="side-panel" class="side-panel hidden">
+    <button id="close-panel" class="px-btn close-btn">✕</button>
+    <div id="panel-avatar"></div>
+    <div id="panel-session" class="panel-field"></div>
+    <div id="panel-project" class="panel-field muted"></div>
+    <div class="panel-divider"></div>
+    <div class="panel-section-title">CURRENT TOOL</div>
+    <div id="panel-tool" class="panel-tool-box"></div>
+    <div class="panel-divider"></div>
+    <div class="panel-section-title">RECENT CALLS</div>
+    <div id="panel-history" class="panel-history"></div>
+  </div>
+
+  <!-- Legend bottom left -->
+  <div id="legend">
+    <div class="legend-title">TOOLS</div>
+    <div class="legend-items" id="legend-items"></div>
+  </div>
+
+  <!-- Toast notifications -->
+  <div id="toast-area"></div>
+
+  <script type="module" src="/js/game.js"></script>
+</body>
+</html>
