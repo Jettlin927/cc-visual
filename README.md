@@ -63,8 +63,10 @@ The server auto-installs dependencies on first run (`prestart` hook).
 
 Each Claude Code session is a `.jsonl` file. The server parses these to extract:
 - **Last tool call** — name, input preview, status (`running` / `done` / `error`), duration
-- **Session status** — inferred from whether the last message is an unresolved `tool_use`, a user message, or an assistant text reply
-- **Tool count** — number of tool calls in the last 80 lines
+- **Session status** — determined by two signals in combination:
+  1. **Process liveness** (`~/.claude/sessions/{pid}.json`) — if the Claude process is dead, the session is `idle` regardless of JSONL content
+  2. **JSONL last entry** — if alive, distinguishes `running` (unresolved tool call, or last entry is a `tool_result`) from `waiting` (last assistant message is plain text, meaning Claude has replied and is waiting for human input)
+- **Tool count** — number of tool calls in the last 150 lines
 
 ### Character generation
 
@@ -97,7 +99,7 @@ Each character's appearance (skin color, shirt color, hair color, hat type) is d
 | `PORT` | `3333` | HTTP server port |
 | `HOME` | system | Used to locate `~/.claude/projects/` |
 
-Active session threshold: sessions modified within **30 minutes** are shown. Status transitions to `idle` after **10 minutes** of no new messages.
+Active session threshold: sessions modified within **30 minutes** are shown. Status transitions to `idle` as soon as the Claude process exits — long-running tools (slow Bash, API retries) correctly stay `running` even when the `.jsonl` file is temporarily silent.
 
 ## License
 

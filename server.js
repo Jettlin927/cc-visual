@@ -29,8 +29,8 @@ app.get('/api/active', async (req, res) => {
     const all = await scanProjects();
     const now = Date.now();
     const active = all.filter(p => now - p.modifiedAt < ACTIVE_THRESHOLD_MS);
-    // Parse last few entries of each active session to get latest tool call
-    const result = await Promise.all(active.map(enrichSession));
+    const alive = await loadAliveSessions();
+    const result = await Promise.all(active.map(p => enrichSession(p, alive)));
     res.json(result);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -88,7 +88,8 @@ app.get('/api/watch-active', (req, res) => {
       const all = await scanProjects();
       const now = Date.now();
       const active = all.filter(p => now - p.modifiedAt < ACTIVE_THRESHOLD_MS);
-      const result = await Promise.all(active.map(enrichSession));
+      const alive = await loadAliveSessions();
+      const result = await Promise.all(active.map(p => enrichSession(p, alive)));
       res.write(`data: ${JSON.stringify({ type: 'update', sessions: result })}\n\n`);
     } catch {}
   };
