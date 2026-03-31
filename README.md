@@ -9,9 +9,20 @@ A real-time pixel-art dashboard that turns your active Claude Code sessions into
 Every active Claude Code session becomes a pixel character on a shared map. Characters walk around, display speech bubbles showing the current tool being used, and update live via Server-Sent Events. You can click any character (or session in the sidebar) to inspect its tool call history in detail.
 
 **Status indicators:**
-- 🟡 `RUNNING` — Claude is actively executing a tool
-- 🔔 `WAITING` — Claude has responded and is waiting for your input
-- ⚫ `IDLE` — no recent activity
+- 🟡 `RUNNING` — Claude is actively executing a tool; character walks and strikes a tool-specific pose
+- 🔔 `WAITING` — Claude has responded and is waiting for your input; character stops and shows a pulsing `!` bubble with arm raised
+- ⚫ `IDLE` — no recent activity; character crouches, breathes slowly, and stays put
+
+**Tool-specific poses (while RUNNING):**
+
+| Tool | Pose |
+|------|------|
+| Bash | Both arms forward (typing) |
+| Read | Both arms raised (holding book) |
+| Edit / Write | Right arm raised with yellow pen prop |
+| Grep / Glob | Right hand shielding eyes (searching) |
+| Agent | Both arms raised in a V |
+| WebFetch / WebSearch | Right hand raised to forehead (looking up) |
 
 ## Getting started
 
@@ -57,7 +68,7 @@ Each Claude Code session is a `.jsonl` file. The server parses these to extract:
 
 ### Character generation
 
-Each character's appearance (skin color, shirt color, hair color, hat type) is deterministically generated from a hash of the session ID, so the same session always produces the same character.
+Each character's appearance (skin color, shirt color, hair color, hat type) is deterministically generated from a hash of the session ID, so the same session always produces the same character. The name tag above each character shows the project directory name (e.g. `claude-visual`) instead of a raw session ID.
 
 ### Tool color coding
 
@@ -70,13 +81,14 @@ Each character's appearance (skin color, shirt color, hair color, hat type) is d
 | Agent | 🤖 | magenta |
 | WebFetch / WebSearch | 🌐 🔎 | blue |
 
-## Keyboard shortcuts
+## Controls
 
-| Key | Action |
-|-----|--------|
+| Input | Action |
+|-------|--------|
 | `Space` | Cycle through active sessions |
 | Click character | Select and open detail panel |
 | Click map (empty) | Deselect |
+| Drag map | Pan the camera |
 
 ## Configuration
 

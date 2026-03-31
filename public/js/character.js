@@ -1,4 +1,5 @@
 import { TILE_SIZE, isWalkable, randomWalkableTile } from './world.js';
+import { prettyProject } from './utils/formatters.js';
 
 // Tool → emoji + color for speech bubbles
 export const TOOL_META = {
@@ -91,10 +92,13 @@ export class Character {
     // Tool action animation
     this.actionTime = 0;
 
+    this.displayLabel = this._computeLabel();
     this.pickNewTarget();
   }
 
   pickNewTarget() {
+    const status = this.session.status;
+    if (status === 'waiting' || status === 'idle') return;
     const dest = randomWalkableTile(this.map, () => this.rng());
     this.targetX = dest.tx * TILE_SIZE + TILE_SIZE / 2;
     this.targetY = dest.ty * TILE_SIZE + TILE_SIZE / 2;
@@ -106,6 +110,11 @@ export class Character {
   update(dt, t) {
     this.walkTime += dt;
     this.actionTime += dt;
+
+    const status = this.session.status;
+    if (status === 'waiting' || status === 'idle') {
+      this.moving = false;
+    }
 
     if (this.moving) {
       const dx = this.targetX - this.x;
@@ -153,8 +162,12 @@ export class Character {
     } else {
       this.idleTime += dt;
       this.walkFrame = 0;
-      // Idle bob
-      this.bobOffset = Math.sin(t / 800) * 1;
+      // Idle bob — IDLE breathes slower
+      if (status === 'idle') {
+        this.bobOffset = Math.sin(t / 1400) * 0.7;
+      } else {
+        this.bobOffset = Math.sin(t / 800) * 1;
+      }
     }
 
     // Bubble animation
@@ -167,10 +180,18 @@ export class Character {
     }
   }
 
+  _computeLabel() {
+    const proj = this.session.project || '';
+    const parts = prettyProject(proj).split('/').filter(Boolean);
+    return parts[parts.length - 1] || this.id.slice(0, 8);
+  }
+
   updateSession(session) {
     const oldTool = this.currentTool?.name;
+    const projectChanged = session.project !== this.session.project;
     this.session = session;
     this.currentTool = session.lastTool || null;
+    if (projectChanged) this.displayLabel = this._computeLabel();
     // New tool → excite character (pick new destination quickly)
     if (this.currentTool?.name !== oldTool && this.currentTool?.status === 'running') {
       this.actionTime = 0;
@@ -199,6 +220,10 @@ export class Character {
     // Name tag
     this._drawNameTag(ctx, sx, sy);
 
+    if (this.session.status === 'waiting') {
+      this._drawExclamationBubble(ctx, sx, sy, t);
+    }
+
     // Speech bubble
     if (this.bubbleAlpha > 0.01) {
       this._drawBubble(ctx, sx, sy, t);
@@ -209,6 +234,12 @@ export class Character {
     const walk = this.moving;
     const frame = this.walkFrame;
     const flip = this.dir === DIR.LEFT;
+    const sessionStatus = this.session.status;
+    const isIdle    = sessionStatus === 'idle';
+    const isWaiting = sessionStatus === 'waiting';
+    const isRunning = sessionStatus === 'running';
+
+    const crouchY = isIdle ? 3 : 0;
 
     ctx.save();
     ctx.translate(sx, sy);
@@ -217,35 +248,61 @@ export class Character {
     // Shadow
     ctx.fillStyle = 'rgba(0,0,0,0.25)';
     ctx.beginPath();
-    ctx.ellipse(0, 10, 7, 3, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 10 + crouchY, 7, 3, 0, 0, Math.PI * 2);
     ctx.fill();
 
     // ── LEGS ──
-    const legY = 4;
+    const legY = 4 + crouchY;
+    const legH = isIdle ? 3 : 6;
     const legSwing = walk ? Math.sin(this.walkTime * Math.PI * 8) * 3 : 0;
 
     ctx.fillStyle = '#555';
     // Left leg
-    ctx.fillRect(-5, legY, 4, 6 + (walk && frame % 2 === 0 ? -2 : 0));
+    ctx.fillRect(-5, legY, 4, legH + (walk && frame % 2 === 0 ? -2 : 0));
     // Right leg
-    ctx.fillRect(1, legY, 4, 6 + (walk && frame % 2 === 1 ? -2 : 0));
+    ctx.fillRect(1, legY, 4, legH + (walk && frame % 2 === 1 ? -2 : 0));
 
     // ── BODY ──
     ctx.fillStyle = this.shirtColor;
-    ctx.fillRect(-7, -4, 14, 10);
+    ctx.fillRect(-7, -4 + crouchY, 14, 10);
 
     // ── ARMS ──
     const armSwing = walk ? legSwing * -0.7 : 0;
+
+    let leftArmY = -3 + crouchY + armSwing;
+    let rightArmY = -3 + crouchY - armSwing;
+    let leftArmH = 8, rightArmH = 8;
+    let leftHandY = 4 + crouchY + armSwing;
+    let rightHandY = 4 + crouchY - armSwing;
+    let toolPropColor = null;
+
+    if (isWaiting) {
+      // Right arm raised straight up
+      rightArmY  = -14;
+      rightArmH  = 12;
+      rightHandY = -15;
+    } else if (isRunning && this.currentTool) {
+      const pose = this._getToolPose(this.currentTool.name);
+      leftArmY   = pose.leftArmY  + crouchY;
+      rightArmY  = pose.rightArmY + crouchY;
+      leftHandY  = pose.leftHandY + crouchY;
+      rightHandY = pose.rightHandY + crouchY;
+      toolPropColor = pose.propColor || null;
+    }
+
     ctx.fillStyle = this.shirtColor;
-    // Left arm
-    ctx.fillRect(-10, -3 + armSwing, 4, 8);
-    // Right arm
-    ctx.fillRect(6, -3 - armSwing, 4, 8);
+    ctx.fillRect(-10, leftArmY,  4, leftArmH);
+    ctx.fillRect( 6,  rightArmY, 4, rightArmH);
 
     // Hands
     ctx.fillStyle = this.skinColor;
-    ctx.fillRect(-10, 4 + armSwing, 4, 3);
-    ctx.fillRect(6, 4 - armSwing, 4, 3);
+    ctx.fillRect(-10, leftHandY,  4, 3);
+    ctx.fillRect( 6,  rightHandY, 4, 3);
+
+    if (toolPropColor) {
+      ctx.fillStyle = toolPropColor;
+      ctx.fillRect(9, rightHandY - 3, 2, 5);
+    }
 
     // ── HEAD ──
     ctx.fillStyle = this.skinColor;
@@ -277,6 +334,35 @@ export class Character {
     }
 
     ctx.restore();
+  }
+
+  // Returns arm Y positions for a given tool (relative to character origin, no crouchY)
+  _getToolPose(toolName) {
+    switch (toolName) {
+      case 'Bash':
+        // Left arm extended forward (typing)
+        return { leftArmY: -3, leftHandY: 3, rightArmY: -3, rightHandY: 4, propColor: null };
+      case 'Read':
+        // Both arms raised slightly, holding a book
+        return { leftArmY: -6, leftHandY: 1, rightArmY: -6, rightHandY: 1, propColor: null };
+      case 'Edit':
+      case 'Write':
+        // Right arm raised with pen
+        return { leftArmY: -3, leftHandY: 4, rightArmY: -10, rightHandY: -7, propColor: '#ff0' };
+      case 'Grep':
+      case 'Glob':
+        // Right hand shielding eyes (looking/searching)
+        return { leftArmY: -3, leftHandY: 4, rightArmY: -12, rightHandY: -10, propColor: null };
+      case 'Agent':
+        // Both arms raised V-shape
+        return { leftArmY: -10, leftHandY: -7, rightArmY: -10, rightHandY: -7, propColor: null };
+      case 'WebFetch':
+      case 'WebSearch':
+        // Right hand raised to forehead, looking up
+        return { leftArmY: -3, leftHandY: 4, rightArmY: -10, rightHandY: -8, propColor: null };
+      default:
+        return { leftArmY: -3, leftHandY: 4, rightArmY: -3, rightHandY: 4, propColor: null };
+    }
   }
 
   _drawHat(ctx, t) {
@@ -332,7 +418,7 @@ export class Character {
   }
 
   _drawNameTag(ctx, sx, sy) {
-    const label = this.session.sessionId.slice(0, 8);
+    const label = this.displayLabel;
     ctx.font = '7px "Press Start 2P", monospace';
     const tw = ctx.measureText(label).width;
     const tx2 = sx - tw / 2;
@@ -390,6 +476,20 @@ export class Character {
     ctx.font = '10px monospace';
     ctx.fillText('.'.repeat(dots), -2, -bh + 24);
 
+    ctx.restore();
+  }
+
+  _drawExclamationBubble(ctx, sx, sy, t) {
+    const pulse = 0.7 + Math.sin(t / 300) * 0.3; // ~3 flashes/sec
+    ctx.save();
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = '#ffcc00';
+    ctx.fillRect(sx - 6, sy - 57, 12, 13);
+    ctx.font = 'bold 9px "Press Start 2P", monospace';
+    ctx.fillStyle = '#111';
+    ctx.textAlign = 'center';
+    ctx.fillText('!', sx, sy - 47);
+    ctx.textAlign = 'left';
     ctx.restore();
   }
 

@@ -1,5 +1,6 @@
 import { generateMap, drawTile, TILE_SIZE, W as MAP_W, H as MAP_H } from './world.js';
 import { Character, TOOL_META } from './character.js';
+import { prettyProject, fmtDuration } from './utils/formatters.js';
 
 // ─── Setup ───────────────────────────────────────────────
 const canvas = document.getElementById('game-canvas');
@@ -256,7 +257,7 @@ async function fetchHistory(ch) {
       const meta = TOOL_META[tc.name] || { icon: '⚙️', color: '#888' };
       return `<div class="ph-item ${tc.status}" style="border-color:${meta.color}">
         <span class="ph-name" style="color:${meta.color}">${meta.icon} ${tc.name}</span>
-        <span class="ph-dur">${fmtDur(tc.duration)}</span>
+        <span class="ph-dur">${fmtDuration(tc.duration)}</span>
       </div>`;
     }).join('');
   } catch {}
@@ -269,8 +270,46 @@ closePanel.addEventListener('click', () => {
   document.querySelectorAll('.sess-item').forEach(el => el.classList.remove('selected'));
 });
 
+// ─── Map drag ────────────────────────────────────────────
+let isDragging = false;
+let dragMoved  = false;
+let dragStartX = 0, dragStartY = 0;
+let dragStartCamX = 0, dragStartCamY = 0;
+
+canvas.addEventListener('mousedown', (e) => {
+  isDragging   = true;
+  dragMoved    = false;
+  dragStartX   = e.clientX;
+  dragStartY   = e.clientY;
+  dragStartCamX = camX;
+  dragStartCamY = camY;
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  if (!isDragging) return;
+  const dx = e.clientX - dragStartX;
+  const dy = e.clientY - dragStartY;
+  if (Math.hypot(dx, dy) > 4) {
+    dragMoved = true;
+    canvas.style.cursor = 'grabbing';
+  }
+  if (dragMoved) {
+    const c = clampCam(dragStartCamX - dx, dragStartCamY - dy);
+    camX = camTargetX = c.x;
+    camY = camTargetY = c.y;
+  }
+});
+
+const endDrag = () => {
+  isDragging = false;
+  canvas.style.cursor = 'default';
+};
+canvas.addEventListener('mouseup',    endDrag);
+canvas.addEventListener('mouseleave', endDrag);
+
 // ─── Canvas click → select character ────────────────────
 canvas.addEventListener('click', (e) => {
+  if (dragMoved) return; // drag ended, not a click
   const rect = canvas.getBoundingClientRect();
   const mx = e.clientX - rect.left;
   const my = e.clientY - rect.top;
@@ -334,21 +373,11 @@ function showBadge(id, status) {
 }
 
 // ─── Helpers ─────────────────────────────────────────────
-function prettyProject(name) {
-  return name.replace(/^-Users-[^-]+-/, '~/').replace(/-/g, '/');
-}
-
 function getPreview(input) {
   if (!input) return '';
   return (input.command || input.file_path || input.pattern || input.query || input.description || (input.prompt || '')).slice(0, 80);
 }
 
-function fmtDur(ms) {
-  if (ms == null) return '...';
-  if (ms < 1000) return ms + 'ms';
-  if (ms < 60000) return (ms / 1000).toFixed(1) + 's';
-  return Math.floor(ms / 60000) + 'm' + Math.floor((ms % 60000) / 1000) + 's';
-}
 
 function timeAgo(ms) {
   const s = Math.floor((Date.now() - ms) / 1000);
