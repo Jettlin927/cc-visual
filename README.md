@@ -2,7 +2,7 @@
 
 A real-time pixel-art dashboard that turns your active Claude Code sessions into animated characters roaming a game world.
 
-![Claude Visual Screenshot](https://raw.githubusercontent.com/Jettlin927/Session-visual/main/public/preview.png)
+![Claude Visual Screenshot](https://raw.githubusercontent.com/Jettlin927/Session-visual/main/preview.png)
 
 ## What it does
 
