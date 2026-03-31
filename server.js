@@ -6,11 +6,18 @@ import { watch } from 'fs';
 import { homedir } from 'os';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// Load config.json, fall back to defaults if missing
+let cfg = {};
+try {
+  cfg = JSON.parse(await readFile(join(__dirname, 'config.json'), 'utf-8'));
+} catch {}
+
 const app = express();
-const PORT = process.env.PORT || 3333;
-const CLAUDE_DIR = join(homedir(), '.claude');
+const PORT        = process.env.PORT || cfg.port || 3333;
+const CLAUDE_DIR  = (cfg.claudeDir || '~/.claude').replace(/^~/, homedir());
 const SESSIONS_DIR = join(CLAUDE_DIR, 'sessions');
-const ACTIVE_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
+const ACTIVE_THRESHOLD_MS = (cfg.activeThresholdMinutes || 30) * 60 * 1000;
 
 app.use(express.static(join(__dirname, 'public')));
 

@@ -94,12 +94,25 @@ Each character's appearance (skin color, shirt color, hair color, hat type) is d
 
 ## Configuration
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PORT` | `3333` | HTTP server port |
-| `HOME` | system | Used to locate `~/.claude/projects/` |
+Edit **`config.json`** in the project root:
 
-Active session threshold: sessions modified within **30 minutes** are shown. Status transitions to `idle` as soon as the Claude process exits — long-running tools (slow Bash, API retries) correctly stay `running` even when the `.jsonl` file is temporarily silent.
+```json
+{
+  "port": 3333,
+  "claudeDir": "~/.claude",
+  "activeThresholdMinutes": 30
+}
+```
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `port` | `3333` | HTTP server port |
+| `claudeDir` | `~/.claude` | Path to your Claude data directory (`~` expanded automatically). Both `{claudeDir}/projects/` (session logs) and `{claudeDir}/sessions/` (process registry) are derived from this value. |
+| `activeThresholdMinutes` | `30` | Sessions not modified within this window are hidden from the map |
+
+The `PORT` environment variable overrides `config.json` if set.
+
+Active session threshold: sessions modified within the configured window are shown. Status transitions to `idle` as soon as the Claude process exits — long-running tools (slow Bash, API retries) correctly stay `running` even when the `.jsonl` file is temporarily silent.
 
 ## License
 
@@ -200,9 +213,22 @@ npm start
 
 ## 配置
 
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `PORT` | `3333` | HTTP 服务端口 |
-| `HOME` | 系统默认 | 用于定位 `~/.claude/` 目录 |
+编辑项目根目录的 **`config.json`**：
 
-活跃会话阈值：**30 分钟**内有修改的会话会显示在地图上。
+```json
+{
+  "port": 3333,
+  "claudeDir": "~/.claude",
+  "activeThresholdMinutes": 30
+}
+```
+
+| 字段 | 默认值 | 说明 |
+|------|--------|------|
+| `port` | `3333` | HTTP 服务端口 |
+| `claudeDir` | `~/.claude` | Claude 数据目录路径（`~` 自动展开）。`{claudeDir}/projects/`（会话日志）和 `{claudeDir}/sessions/`（进程登记表）均从此字段推导，改一处全部生效 |
+| `activeThresholdMinutes` | `30` | 超过此分钟数未修改的会话将从地图上隐藏 |
+
+环境变量 `PORT` 的优先级高于 `config.json`。
+
+活跃会话阈值：在配置的时间窗口内有修改的会话会显示在地图上。
