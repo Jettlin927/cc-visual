@@ -183,10 +183,15 @@ function buildSessionItem(s) {
   const ago = timeAgo(s.modifiedAt);
   const needsReview = s.status === 'waiting';
 
+  const sourceBadge = s.source === 'codex'
+    ? `<span class="source-badge codex" title="${s.model || 'Codex'}">GPT</span>`
+    : `<span class="source-badge claude" title="Claude Code">CC</span>`;
+
   el.innerHTML = `
     <div class="sess-top">
       <span class="sess-status-dot"></span>
       <span class="sess-id">${s.sessionId.slice(0,8)}</span>
+      ${sourceBadge}
       ${needsReview ? `<span class="sess-alert" title="Needs your review">🔔</span>` : ''}
     </div>
     <div class="sess-project">${prettyProject(s.project)}</div>
@@ -233,7 +238,8 @@ function renderPanel(ch, s) {
   panelAvatar.appendChild(ac);
 
   panelSession.textContent = ch.id.slice(0, 16) + '...';
-  panelProject.textContent = prettyProject(ch.session.project);
+  panelProject.textContent = prettyProject(ch.session.project)
+    + (ch.session.source === 'codex' && ch.session.model ? ` · ${ch.session.model}` : '');
 
   const tool = s?.lastTool || ch.currentTool;
   if (tool) {
@@ -250,10 +256,17 @@ function renderPanel(ch, s) {
 
 async function fetchHistory(ch) {
   try {
-    const r = await fetch(`/api/transcript?path=${encodeURIComponent(ch.session.filePath)}`);
-    const d = await r.json();
-    const recent = (d.toolCalls || []).slice(-12).reverse();
-    panelHistory.innerHTML = recent.map(tc => {
+    let toolCalls;
+    if (ch.session.source === 'codex') {
+      const r = await fetch(`/api/codex-history?threadId=${encodeURIComponent(ch.session.sessionId)}`);
+      const d = await r.json();
+      toolCalls = (d.toolCalls || []).slice(-12).reverse();
+    } else {
+      const r = await fetch(`/api/transcript?path=${encodeURIComponent(ch.session.filePath)}`);
+      const d = await r.json();
+      toolCalls = (d.toolCalls || []).slice(-12).reverse();
+    }
+    panelHistory.innerHTML = toolCalls.map(tc => {
       const meta = TOOL_META[tc.name] || { icon: '⚙️', color: '#888' };
       return `<div class="ph-item ${tc.status}" style="border-color:${meta.color}">
         <span class="ph-name" style="color:${meta.color}">${meta.icon} ${tc.name}</span>
@@ -343,8 +356,9 @@ window.addEventListener('keydown', (e) => {
 
 // ─── Legend ──────────────────────────────────────────────
 const LEGEND_TOOLS = [
-  ['Bash','⚡','#fa0'], ['Read','📖','#0ff'], ['Edit','✏️','#0f0'],
+  ['Bash/Exec','⚡','#fa0'], ['Read','📖','#0ff'], ['Edit','✏️','#0f0'],
   ['Grep','🔍','#bc8cff'], ['Agent','🤖','#f0f'], ['Web','🌐','#58a6ff'],
+  ['CC','🟢','#0f0'], ['GPT','🔵','#58a6ff'],
 ];
 document.getElementById('legend-items').innerHTML = LEGEND_TOOLS.map(([name, icon, color]) => `
   <div class="legend-item">

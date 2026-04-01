@@ -200,6 +200,16 @@ body {
 .sess-badge.waiting { border-color: var(--orange); color: var(--orange); }
 .sess-badge.idle    { border-color: var(--muted);  color: var(--muted); }
 
+.source-badge {
+  font-size: 5px;
+  padding: 1px 3px;
+  border: 1px solid;
+  letter-spacing: 0.5px;
+  margin-left: auto;
+}
+.source-badge.claude { border-color: #3a3; color: #3a3; }
+.source-badge.codex  { border-color: #58a6ff; color: #58a6ff; }
+
 .sess-tool {
   font-size: 7px;
   color: var(--text);

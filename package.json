@@ -1,10 +1,10 @@
 {
-  "name": "claude-visual",
+  "name": "cc-visual",
   "version": "1.0.0",
-  "description": "Pixel-art real-time visualization dashboard for Claude Code sessions",
+  "description": "Pixel-art real-time visualization dashboard for Claude Code and Codex sessions",
   "type": "module",
   "scripts": {
-    "start": "node server.js",
+    "start": "node --disable-warning=ExperimentalWarning server.js",
     "prestart": "test -d node_modules || npm install --silent"
   },
   "dependencies": {

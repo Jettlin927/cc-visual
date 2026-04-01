@@ -1,9 +1,10 @@
 import express from 'express';
 import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
+import { dirname, join, basename } from 'path';
 import { readdir, readFile, stat } from 'fs/promises';
 import { watch } from 'fs';
 import { homedir } from 'os';
+import { DatabaseSync } from 'node:sqlite';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -16,6 +17,7 @@ try {
 const app = express();
 const PORT        = process.env.PORT || cfg.port || 3333;
 const CLAUDE_DIR  = (cfg.claudeDir || '~/.claude').replace(/^~/, homedir());
+const CODEX_DIR   = (cfg.codexDir  || '~/.codex' ).replace(/^~/, homedir());
 const SESSIONS_DIR = join(CLAUDE_DIR, 'sessions');
 const ACTIVE_THRESHOLD_MS = (cfg.activeThresholdMinutes || 30) * 60 * 1000;
 
@@ -37,8 +39,9 @@ app.get('/api/active', async (req, res) => {
     const now = Date.now();
     const active = all.filter(p => now - p.modifiedAt < ACTIVE_THRESHOLD_MS);
     const alive = await loadAliveSessions();
-    const result = await Promise.all(active.map(p => enrichSession(p, alive)));
-    res.json(result);
+    const claudeSessions = await Promise.all(active.map(p => enrichSession(p, alive)));
+    const codexSessions = scanAndEnrichCodexSessions();
+    res.json([...claudeSessions, ...codexSessions]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -96,8 +99,9 @@ app.get('/api/watch-active', (req, res) => {
       const now = Date.now();
       const active = all.filter(p => now - p.modifiedAt < ACTIVE_THRESHOLD_MS);
       const alive = await loadAliveSessions();
-      const result = await Promise.all(active.map(p => enrichSession(p, alive)));
-      res.write(`data: ${JSON.stringify({ type: 'update', sessions: result })}\n\n`);
+      const claudeSessions = await Promise.all(active.map(p => enrichSession(p, alive)));
+      const codexSessions = scanAndEnrichCodexSessions();
+      res.write(`data: ${JSON.stringify({ type: 'update', sessions: [...claudeSessions, ...codexSessions] })}\n\n`);
     } catch {}
   };
 
@@ -191,6 +195,7 @@ async function scanProjects() {
       const fp = join(projectPath, f);
       const s = await stat(fp);
       items.push({
+        source: 'claude',
         project: entry.name,
         sessionId: f.replace('.jsonl', ''),
         filePath: fp,
@@ -272,8 +277,121 @@ function getInputPreview(input) {
   return input.command || input.file_path || input.pattern || input.query || (input.prompt || '').slice(0, 60) || input.description || '';
 }
 
+// ---- Codex (OpenAI) support ----
+
+// Returns enriched session objects for all recent Codex threads (synchronous SQLite)
+function scanAndEnrichCodexSessions() {
+  const stateDbPath = join(CODEX_DIR, 'state_5.sqlite');
+  const logsDbPath  = join(CODEX_DIR, 'logs_1.sqlite');
+  let stateDb, logsDb;
+  try {
+    stateDb = new DatabaseSync(stateDbPath, { readOnly: true });
+    logsDb  = new DatabaseSync(logsDbPath,  { readOnly: true });
+
+    const cutoff  = Math.floor((Date.now() - ACTIVE_THRESHOLD_MS) / 1000);
+    const threads = stateDb.prepare(
+      'SELECT id, title, cwd, updated_at, model FROM threads WHERE archived = 0 AND updated_at > ? ORDER BY updated_at DESC'
+    ).all(cutoff);
+
+    return threads.map(t => {
+      // --- Liveness ---
+      const pidRow = logsDb.prepare(
+        'SELECT process_uuid FROM logs WHERE thread_id = ? AND process_uuid IS NOT NULL ORDER BY ts DESC, id DESC LIMIT 1'
+      ).get(t.id);
+      let isAlive = false;
+      if (pidRow?.process_uuid) {
+        const m = pidRow.process_uuid.match(/^pid:(\d+):/);
+        if (m) { try { process.kill(parseInt(m[1], 10), 0); isAlive = true; } catch {} }
+      }
+
+      // --- Last tool call ---
+      const toolRows = logsDb.prepare(
+        "SELECT ts, feedback_log_body FROM logs WHERE thread_id = ? AND feedback_log_body LIKE '%codex.tool_result%' AND target IN ('codex_otel.trace_safe','codex_otel.log_only') ORDER BY ts DESC, id DESC LIMIT 10"
+      ).all(t.id);
+      let lastTool = null;
+      for (const row of toolRows) {
+        const m = row.feedback_log_body?.match(/event\.name="codex\.tool_result" tool_name=(\S+) call_id=(\S+) duration_ms=(\d+) success=(\S+)/);
+        if (m) {
+          lastTool = {
+            name: m[1], id: m[2], input: null,
+            timestamp: new Date(Number(row.ts) * 1000).toISOString(),
+            status: m[4] === 'true' ? 'done' : 'error',
+            duration: parseInt(m[3], 10),
+          };
+          break;
+        }
+      }
+
+      // --- Tool count (deduplicate by call_id using trace_safe only) ---
+      const countRow = logsDb.prepare(
+        "SELECT COUNT(*) as n FROM logs WHERE thread_id = ? AND target = 'codex_otel.trace_safe' AND feedback_log_body LIKE '%codex.tool_result%'"
+      ).get(t.id);
+
+      // --- Status: check last meaningful event ---
+      let status = 'idle';
+      if (isAlive) {
+        const latestRow = logsDb.prepare(
+          "SELECT feedback_log_body FROM logs WHERE thread_id = ? AND target = 'codex_otel.trace_safe' ORDER BY ts DESC, id DESC LIMIT 1"
+        ).get(t.id);
+        const body = latestRow?.feedback_log_body || '';
+        status = body.includes('response.completed') ? 'waiting' : 'running';
+      }
+
+      return {
+        source: 'codex',
+        project: basename(t.cwd) || t.cwd,
+        sessionId: t.id,
+        title: (t.title || '').slice(0, 80),
+        filePath: null,
+        modifiedAt: Number(t.updated_at) * 1000,
+        size: 0,
+        model: t.model || 'gpt-4',
+        lastTool,
+        status,
+        toolCount: Number(countRow?.n) || 0,
+      };
+    });
+  } catch {
+    return [];
+  } finally {
+    try { stateDb?.close(); } catch {}
+    try { logsDb?.close();  } catch {}
+  }
+}
+
+// Codex tool history for detail panel
+app.get('/api/codex-history', (req, res) => {
+  const { threadId } = req.query;
+  if (!threadId) return res.status(400).json({ error: 'Missing threadId' });
+  let logsDb;
+  try {
+    logsDb = new DatabaseSync(join(CODEX_DIR, 'logs_1.sqlite'), { readOnly: true });
+    const rows = logsDb.prepare(
+      "SELECT ts, feedback_log_body FROM logs WHERE thread_id = ? AND target = 'codex_otel.trace_safe' AND feedback_log_body LIKE '%codex.tool_result%' ORDER BY ts ASC, id ASC LIMIT 50"
+    ).all(threadId);
+    const toolCalls = [];
+    for (const row of rows) {
+      const m = row.feedback_log_body?.match(/event\.name="codex\.tool_result" tool_name=(\S+) call_id=(\S+) duration_ms=(\d+) success=(\S+)/);
+      if (m) {
+        toolCalls.push({
+          name: m[1], id: m[2], input: null,
+          timestamp: new Date(Number(row.ts) * 1000).toISOString(),
+          status: m[4] === 'true' ? 'done' : 'error',
+          duration: parseInt(m[3], 10),
+        });
+      }
+    }
+    res.json({ toolCalls });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  } finally {
+    try { logsDb?.close(); } catch {}
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`\n  👾 Claude Visual running at http://localhost:${PORT}\n`);
-  console.log(`  Scanning: ${CLAUDE_DIR}/projects/\n`);
-  console.log(`  Active sessions = last modified within 30 minutes\n`);
+  console.log(`  Claude Code: ${CLAUDE_DIR}/projects/`);
+  console.log(`  Codex:       ${CODEX_DIR}/state_5.sqlite`);
+  console.log(`\n  Active sessions = last modified within 30 minutes\n`);
 });

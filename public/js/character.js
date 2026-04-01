@@ -3,6 +3,7 @@ import { prettyProject } from './utils/formatters.js';
 
 // Tool → emoji + color for speech bubbles
 export const TOOL_META = {
+  // Claude Code tools
   Bash:         { icon: '⚡', color: '#fa0', label: 'BASH' },
   Read:         { icon: '📖', color: '#0ff', label: 'READ' },
   Edit:         { icon: '✏️', color: '#0f0', label: 'EDIT' },
@@ -19,6 +20,17 @@ export const TOOL_META = {
   TaskCreate:   { icon: '📝', color: '#888', label: 'TASK' },
   TaskUpdate:   { icon: '🔄', color: '#888', label: 'UPDATE' },
   NotebookEdit: { icon: '📓', color: '#ff0', label: 'NOTEBK' },
+  // Codex tools
+  exec_command: { icon: '⚡', color: '#fa0', label: 'EXEC' },
+  write_stdin:  { icon: '⌨️', color: '#fa0', label: 'STDIN' },
+  read_file:    { icon: '📖', color: '#0ff', label: 'READ' },
+  write_file:   { icon: '💾', color: '#0f0', label: 'WRITE' },
+  str_replace_based_edit_tool: { icon: '✏️', color: '#0f0', label: 'EDIT' },
+  glob_search:  { icon: '🔮', color: '#bc8cff', label: 'GLOB' },
+  grep_search:  { icon: '🔍', color: '#bc8cff', label: 'GREP' },
+  web_search:   { icon: '🔎', color: '#58a6ff', label: 'SEARCH' },
+  web_fetch:    { icon: '🌐', color: '#58a6ff', label: 'FETCH' },
+  shell_tool:   { icon: '🐚', color: '#fa0', label: 'SHELL' },
 };
 
 const TOOL_DEFAULT = { icon: '⚙️', color: '#888', label: '???' };
@@ -82,6 +94,9 @@ export class Character {
     this.dir = DIR.DOWN;
     this.bobOffset = 0;
     this.idleTime = 0;
+
+    // Source
+    this.isCodex = session.source === 'codex';
 
     // Tool state
     this.currentTool = session.lastTool || null;
@@ -424,9 +439,9 @@ export class Character {
     const tx2 = sx - tw / 2;
     const ty2 = sy - 44;
 
-    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillStyle = this.isCodex ? 'rgba(0,40,100,0.85)' : 'rgba(0,0,0,0.7)';
     ctx.fillRect(tx2 - 3, ty2 - 9, tw + 6, 12);
-    ctx.fillStyle = this.selected ? '#0ff' : '#ccc';
+    ctx.fillStyle = this.selected ? '#0ff' : this.isCodex ? '#58a6ff' : '#ccc';
     ctx.fillText(label, tx2, ty2);
   }
 
