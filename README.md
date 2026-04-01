@@ -2,7 +2,7 @@
 
 A real-time pixel-art dashboard that turns your active **Claude Code** and **OpenAI Codex** sessions into animated characters roaming a game world.
 
-![Claude Visual Screenshot](https://raw.githubusercontent.com/Jettlin927/Session-visual/main/preview.png)
+![Claude Visual Screenshot](https://raw.githubusercontent.com/Jettlin927/cc-visual/main/preview.png)
 
 ## What it does
 
@@ -31,8 +31,8 @@ Every active Claude Code or Codex session becomes a pixel character on a shared 
 **Requirements:** Node.js 22+ (uses built-in `node:sqlite` for Codex support), Claude Code and/or Codex installed
 
 ```bash
-git clone https://github.com/Jettlin927/Session-visual.git
-cd Session-visual
+git clone https://github.com/Jettlin927/cc-visual.git
+cd cc-visual
 npm start
 ```
 
@@ -164,8 +164,8 @@ MIT
 **环境要求：** Node.js 22+（使用内置 `node:sqlite` 支持 Codex），已安装 Claude Code 和/或 Codex
 
 ```bash
-git clone https://github.com/Jettlin927/Session-visual.git
-cd Session-visual
+git clone https://github.com/Jettlin927/cc-visual.git
+cd cc-visual
 npm start
 ```
 
