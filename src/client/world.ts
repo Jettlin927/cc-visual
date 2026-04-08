@@ -243,12 +243,19 @@ export function isWalkable(map: TileMap, tx: number, ty: number): boolean {
          t !== Tile.ROCK && t !== Tile.FENCE_H && t !== Tile.FENCE_V && t !== Tile.HOUSE;
 }
 
-// Good spawn/wander points (avoid obstacles)
+// Center-biased random: average of two uniform samples → bell-curve around center
+function centerBiased(rng: () => number, size: number): number {
+  const margin = Math.floor(size * 0.1);
+  const inner = size - margin * 2;
+  return margin + Math.floor(((rng() + rng()) / 2) * inner);
+}
+
+// Good spawn/wander points (avoid obstacles, prefer center)
 export function randomWalkableTile(map: TileMap, rng: () => number): { tx: number; ty: number } {
   let tx: number, ty: number, tries = 0;
   do {
-    tx = Math.floor(rng() * MAP_W);
-    ty = Math.floor(rng() * MAP_H);
+    tx = centerBiased(rng, MAP_W);
+    ty = centerBiased(rng, MAP_H);
     tries++;
   } while (!isWalkable(map, tx, ty) && tries < 100);
   return { tx, ty };
