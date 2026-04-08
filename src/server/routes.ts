@@ -14,6 +14,7 @@ import { scanProjects, loadAliveSessions } from './scanner.js';
 import { parseToolCalls } from './tool-parser.js';
 import { enrichSession } from './enrichment.js';
 import { scanAndEnrichCodexSessions, getCodexHistory } from './codex.js';
+import { saveDailyStats, loadDailyStats } from './stats-store.js';
 import { focusWindow } from './focus-window.js';
 
 import express from 'express';
@@ -309,6 +310,53 @@ export function createRouter(config: AppConfig): Router {
         res.json({ ok: true });
       }
     });
+  });
+
+  // Archive today's stats to JSON file
+  router.post('/api/stats/archive', async (_req, res) => {
+    try {
+      const sessions = await getActiveSessions(config);
+      const today = new Date().toISOString().slice(0, 10);
+      let totalToolCalls = 0;
+      let claudeCount = 0;
+      let codexCount = 0;
+      const byProject: Record<string, { sessions: number; tools: number }> = {};
+
+      for (const s of sessions) {
+        totalToolCalls += s.toolCount;
+        if (s.source === 'claude') claudeCount++; else codexCount++;
+        const proj = s.project;
+        if (!byProject[proj]) byProject[proj] = { sessions: 0, tools: 0 };
+        byProject[proj].sessions++;
+        byProject[proj].tools += s.toolCount;
+      }
+
+      saveDailyStats({
+        date: today,
+        totalSessions: sessions.length,
+        toolCalls: totalToolCalls,
+        bySource: { claude: claudeCount, codex: codexCount },
+        byProject,
+      });
+      res.json({ ok: true, date: today });
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
+  // Query historical daily stats
+  router.get('/api/stats/daily', (req, res) => {
+    const date = req.query.date as string | undefined;
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      res.status(400).json({ error: 'Invalid date format, use YYYY-MM-DD' });
+      return;
+    }
+    const stats = loadDailyStats(date);
+    if (!stats) {
+      res.status(404).json({ error: 'No data for this date' });
+      return;
+    }
+    res.json(stats);
   });
 
   return router;

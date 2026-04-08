@@ -2,3 +2,4 @@ node_modules/
 public/dist/
 dist/
 .claude/worktrees/
+data/stats/
