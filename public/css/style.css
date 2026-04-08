@@ -659,3 +659,40 @@ body {
   color: var(--red);
   border-bottom: 1px solid var(--red);
 }
+
+/* ─── SETTINGS FORM ─── */
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0;
+  font-size: 8px;
+}
+
+.settings-label {
+  color: var(--muted);
+  font-family: var(--px);
+  font-size: 7px;
+}
+
+.settings-check {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--cyan);
+  cursor: pointer;
+}
+
+.settings-input {
+  font-family: var(--px);
+  font-size: 8px;
+  width: 50px;
+  padding: 2px 4px;
+  background: rgba(255,255,255,0.04);
+  color: var(--text);
+  border: 1px solid var(--muted);
+  outline: none;
+  text-align: center;
+}
+.settings-input:focus {
+  border-color: var(--cyan);
+}

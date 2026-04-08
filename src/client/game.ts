@@ -2,7 +2,7 @@ import type { Session, SSEMessage, TileMap, HealthResponse } from '../shared/typ
 import { TILE_SIZE, MAP_W, MAP_H, CAMERA_LERP, LEGEND_TOOLS } from '../shared/constants.js';
 import { generateMap, drawTile } from './world.js';
 import { Character } from './character.js';
-import { showToast, showBadge, notifyWaiting, toggleMute, isMuted } from './notifications.js';
+import { showToast, showBadge, notifyWaiting, toggleMute, isMuted, getNotifSettings, setNotifEnabled, setDelayMinutes, setProjectWhitelist } from './notifications.js';
 import { renderSessionList } from './sidebar.js';
 import { initPanel, showPanel, hidePanel, renderPanel, fetchHistory } from './panel.js';
 import { initInteraction } from './interaction.js';
@@ -243,6 +243,36 @@ muteBtn.textContent = isMuted() ? '🔇' : '🔊';
 muteBtn.addEventListener('click', () => {
   toggleMute();
   muteBtn.textContent = isMuted() ? '🔇' : '🔊';
+});
+
+// ─── Settings Panel ─────────────────────────────────────
+const settingsPanel = document.getElementById('settings-panel')!;
+const settingsBtn   = document.getElementById('hud-settings-btn')!;
+const settingsClose = document.getElementById('settings-close')!;
+const setEnabled    = document.getElementById('set-enabled') as HTMLInputElement;
+const setDelay      = document.getElementById('set-delay') as HTMLInputElement;
+const setProjects   = document.getElementById('set-projects') as HTMLInputElement;
+
+function syncSettingsUI(): void {
+  const s = getNotifSettings();
+  setEnabled.checked = s.enabled;
+  setDelay.value = String(s.delayMinutes);
+  setProjects.value = s.projectWhitelist.join(', ');
+}
+
+settingsBtn.addEventListener('click', () => {
+  const isHidden = settingsPanel.classList.contains('hidden');
+  settingsPanel.classList.toggle('hidden');
+  if (isHidden) syncSettingsUI();
+});
+
+settingsClose.addEventListener('click', () => settingsPanel.classList.add('hidden'));
+
+setEnabled.addEventListener('change', () => setNotifEnabled(setEnabled.checked));
+setDelay.addEventListener('change', () => setDelayMinutes(Math.max(0, parseInt(setDelay.value, 10) || 0)));
+setProjects.addEventListener('change', () => {
+  const list = setProjects.value.split(',').map(s => s.trim()).filter(Boolean);
+  setProjectWhitelist(list);
 });
 
 // ─── Diagnostic Panel ───────────────────────────────────

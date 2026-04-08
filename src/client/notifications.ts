@@ -17,21 +17,47 @@ export function showBadge(id: string, status: string): void {
   setTimeout(() => { el.style.background = ''; }, BADGE_FLASH_MS);
 }
 
-// ─── Desktop notifications + 8-bit beep ────────────────
-const MUTE_KEY = 'cc-visual-muted';
-let muted = localStorage.getItem(MUTE_KEY) === 'true';
-let notifRequested = false;
-const recentNotifs: Set<string> = new Set(); // debounce per session
+// ─── Notification settings (localStorage) ──────────────
+const SETTINGS_KEY = 'cc-visual-notif-settings';
 
-export function isMuted(): boolean { return muted; }
+interface NotifSettings {
+  enabled: boolean;
+  muted: boolean;
+  delayMinutes: number;
+  projectWhitelist: string[];   // empty = all projects
+}
+
+function loadSettings(): NotifSettings {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (raw) return JSON.parse(raw) as NotifSettings;
+  } catch { /* ignore */ }
+  return { enabled: true, muted: false, delayMinutes: 0, projectWhitelist: [] };
+}
+
+function saveSettings(): void {
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(notifSettings));
+}
+
+const notifSettings: NotifSettings = loadSettings();
+let notifRequested = false;
+const recentNotifs: Set<string> = new Set();
+
+export function getNotifSettings(): NotifSettings { return notifSettings; }
+
+export function setNotifEnabled(v: boolean): void { notifSettings.enabled = v; saveSettings(); }
+export function setDelayMinutes(v: number): void { notifSettings.delayMinutes = v; saveSettings(); }
+export function setProjectWhitelist(list: string[]): void { notifSettings.projectWhitelist = list; saveSettings(); }
+
+export function isMuted(): boolean { return notifSettings.muted; }
 
 export function toggleMute(): void {
-  muted = !muted;
-  localStorage.setItem(MUTE_KEY, String(muted));
+  notifSettings.muted = !notifSettings.muted;
+  saveSettings();
 }
 
 function playBeep(): void {
-  if (muted) return;
+  if (notifSettings.muted) return;
   try {
     const ac = new AudioContext();
     const osc = ac.createOscillator();
@@ -48,7 +74,22 @@ function playBeep(): void {
   } catch { /* AudioContext not available */ }
 }
 
-export function notifyWaiting(sessionId: string, project: string): void {
+export function notifyWaiting(sessionId: string, project: string, waitedMs?: number): void {
+  if (!notifSettings.enabled) return;
+
+  // Delay threshold check
+  if (notifSettings.delayMinutes > 0 && waitedMs != null) {
+    if (waitedMs < notifSettings.delayMinutes * 60000) return;
+  }
+
+  // Project whitelist check
+  if (notifSettings.projectWhitelist.length > 0) {
+    const match = notifSettings.projectWhitelist.some(w =>
+      project.toLowerCase().includes(w.toLowerCase()),
+    );
+    if (!match) return;
+  }
+
   // Debounce: don't re-notify same session within 30s
   if (recentNotifs.has(sessionId)) return;
   recentNotifs.add(sessionId);
