@@ -72,16 +72,12 @@ export class Character {
 
   // Tool state
   currentTool: ToolCall | null;
-  toolName: string | undefined;
   bubbleAlpha: number;
   bubbleScale: number;
   selected: boolean;
 
   // Tool action animation
   actionTime: number;
-
-  // Status tracking
-  status: string;
 
   displayLabel: string;
 
@@ -108,7 +104,6 @@ export class Character {
     this.y  = spawn.ty * TILE_SIZE + TILE_SIZE / 2;
     this.tx = spawn.tx;
     this.ty = spawn.ty;
-    this.status = session.status;
 
     // Movement
     this.targetX = this.x;
@@ -129,7 +124,6 @@ export class Character {
 
     // Tool state
     this.currentTool = session.lastTool || null;
-    this.toolName = this.currentTool?.name;
     this.bubbleAlpha = 0;
     this.bubbleScale = 0;
     this.selected = false;
@@ -142,7 +136,7 @@ export class Character {
   }
 
   private _navigateToZone(): void {
-    const zone = getZoneTarget(this.toolName, this.session.status);
+    const zone = getZoneTarget(this.currentTool?.name, this.session.status);
     this.targetX = zone.tx * TILE_SIZE + TILE_SIZE / 2;
     this.targetY = zone.ty * TILE_SIZE + TILE_SIZE / 2;
     this.moving = true;
@@ -229,17 +223,15 @@ export class Character {
   }
 
   updateSession(session: Session): void {
-    const oldTool = this.toolName;
-    const oldStatus = this.status;
+    const oldTool = this.currentTool?.name;
+    const oldStatus = this.session.status;
     const projectChanged = session.project !== this.session.project;
     this.session = session;
     this.currentTool = session.lastTool || null;
-    this.toolName = this.currentTool?.name;
     if (projectChanged) this.displayLabel = this._computeLabel();
 
     // Re-navigate when tool or status changes
-    if (this.toolName !== oldTool || session.status !== oldStatus) {
-      this.status = session.status;
+    if (this.currentTool?.name !== oldTool || session.status !== oldStatus) {
       this.actionTime = 0;
       this._navigateToZone();
     }

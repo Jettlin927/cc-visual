@@ -275,9 +275,8 @@ interface DayPhase {
 }
 
 function getDayPhase(): DayPhase {
-  const h = new Date().getHours();
-  const m = new Date().getMinutes();
-  const t = h + m / 60;
+  const now = new Date();
+  const t = now.getHours() + now.getMinutes() / 60;
   if (t >= 6 && t < 7)   return { color: '255,180,100', alpha: 0.15 * (7 - t), night: false };
   if (t >= 7 && t < 17)  return { color: '0,0,0',       alpha: 0,               night: false };
   if (t >= 17 && t < 19) return { color: '255,140,50',  alpha: 0.12 * (t - 17) / 2, night: false };
@@ -285,8 +284,10 @@ function getDayPhase(): DayPhase {
   return { color: '20,15,60', alpha: 0.35, night: true };
 }
 
+let _cachedDayPhase: DayPhase = getDayPhase();
+
 function renderDayNight(ts: number): void {
-  const { color, alpha, night } = getDayPhase();
+  const { color, alpha, night } = _cachedDayPhase;
   if (alpha > 0) {
     ctx.fillStyle = `rgba(${color},${alpha})`;
     ctx.fillRect(0, 0, VIEW_W(), VIEW_H());
@@ -318,7 +319,7 @@ const particles: Particle[] = [];
 const MAX_PARTICLES = 25;
 
 function spawnParticle(): Particle {
-  const { night } = getDayPhase();
+  const { night } = _cachedDayPhase;
   if (night) {
     return {
       x: Math.random() * WORLD_W, y: Math.random() * WORLD_H,
@@ -451,6 +452,7 @@ function gameLoop(ts: number): void {
   camY += (camTargetY - camY) * CAMERA_LERP;
 
   // Update systems
+  _cachedDayPhase = getDayPhase();
   updateParticles(dt);
   updateSmoke(dt);
   updateCat(dt);
