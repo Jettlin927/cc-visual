@@ -159,6 +159,28 @@ export interface FocusWindowResponse {
   process?: string;
 }
 
+/** API Response: Health check */
+export interface HealthResponse {
+  claudeDir: { path: string; exists: boolean };
+  codexDir: { path: string; exists: boolean };
+  codexSqlite: { readable: boolean };
+  lastScanAt: string | null;
+  scannedFiles: number;
+  filteredSessions: number;
+  sseClients: number;
+}
+
+/** API Response: Stats */
+export interface StatsResponse {
+  totalSessions: number;
+  activeSessions: number;
+  totalToolCalls: number;
+  claudeCount: number;
+  codexCount: number;
+  byProject: Record<string, { sessions: number; tools: number }>;
+  byTool: Record<string, number>;
+}
+
 /** API Response: Transcript */
 export interface TranscriptResponse {
   totalLines: number;

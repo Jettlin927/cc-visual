@@ -3,6 +3,7 @@ import type { Session, ToolCall, TileMap, ToolMeta } from '../shared/types.js';
 import { TILE_SIZE } from '../shared/constants.js';
 import { TOOL_META, TOOL_DEFAULT, getToolPose } from '../shared/tool-metadata.js';
 import { isWalkable, randomWalkableTile } from './world.js';
+import { inputPreview } from './utils/formatters.js';
 import { prettyProject } from './utils/formatters.js';
 
 export { TOOL_META };
@@ -412,11 +413,14 @@ export class Character {
     ctx.globalAlpha = 1;
   }
 
+  private static readonly SEARCH_TOOLS = new Set(['Grep', 'Glob', 'Read']);
+  private static readonly EDIT_TOOLS = new Set(['Edit', 'Write']);
+
   private _getPhaseTag(): { text: string; color: string } {
     if (this.session.status === 'waiting') return { text: '等你确认', color: '#fa0' };
     const name = this.currentTool?.name ?? '';
-    if (['Grep', 'Glob', 'Read'].includes(name)) return { text: '搜索中', color: '#0ff' };
-    if (['Edit', 'Write'].includes(name)) return { text: '编辑中', color: '#0f0' };
+    if (Character.SEARCH_TOOLS.has(name)) return { text: '搜索中', color: '#0ff' };
+    if (Character.EDIT_TOOLS.has(name)) return { text: '编辑中', color: '#0f0' };
     if (name === 'Bash') return { text: '执行命令', color: '#f0f' };
     return { text: '工作中', color: '#888' };
   }
@@ -448,11 +452,9 @@ export class Character {
   }
 
   private _getToolPreview(): string {
-    const input = this.currentTool?.input;
+    const input = this.currentTool?.input as Record<string, unknown> | undefined;
     if (!input) return '';
-    const raw = (input.command || input.file_path || input.pattern ||
-      input.query || input.description || input.prompt || '') as string;
-    return raw.slice(0, 40);
+    return inputPreview(input).slice(0, 40);
   }
 
   private _drawBubble(ctx: CanvasRenderingContext2D, sx: number, sy: number, t: number): void {
@@ -461,12 +463,8 @@ export class Character {
     const alpha = this.bubbleAlpha;
     const scale = this.bubbleScale;
 
-    // Measure text to size bubble
-    ctx.save();
-    ctx.font = '6px monospace';
-    const previewWidth = preview ? ctx.measureText(preview).width : 0;
-    ctx.restore();
-
+    // Estimate preview width (~6px per char in monospace 6px)
+    const previewWidth = preview ? preview.length * 4 : 0;
     const bw = Math.max(58, previewWidth + 12);
     const bh = preview ? 36 : 28;
     const bx = sx - bw / 2 + 5;
@@ -504,11 +502,11 @@ export class Character {
     ctx.fillStyle = meta.color;
     ctx.fillText(meta.label, -2, -bh + 12);
 
-    // Running dots
+    // Running dots (estimate label width: ~8px per char in Press Start 2P 7px)
     const dots = Math.floor(t / 400) % 4;
     ctx.fillStyle = '#fff8';
     ctx.font = '10px monospace';
-    ctx.fillText('.'.repeat(dots), -2 + ctx.measureText(meta.label).width + 4, -bh + 12);
+    ctx.fillText('.'.repeat(dots), -2 + meta.label.length * 8 + 4, -bh + 12);
 
     // Preview text (tool input)
     if (preview) {

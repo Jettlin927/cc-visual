@@ -1,7 +1,7 @@
 import type { Session, ToolCall, ToolMeta } from '../shared/types.js';
 import { TOOL_META, TOOL_DEFAULT } from '../shared/tool-metadata.js';
 import { HISTORY_ITEMS } from '../shared/constants.js';
-import { prettyProject, fmtDuration, fmtTime, esc } from './utils/formatters.js';
+import { prettyProject, fmtDuration, fmtTime, esc, truncate } from './utils/formatters.js';
 import type { Character } from './character.js';
 import { showToast } from './notifications.js';
 import { togglePin, isPinned } from './sidebar.js';
@@ -181,10 +181,7 @@ export async function fetchHistory(ch: Character): Promise<void> {
 
     // Render last reply
     if (lastAssistantText) {
-      const truncated = lastAssistantText.length >= 200
-        ? lastAssistantText + '...'
-        : lastAssistantText;
-      panelReply.textContent = truncated;
+      panelReply.textContent = truncate(lastAssistantText, 200);
     } else {
       panelReply.textContent = 'No reply yet';
     }

@@ -1,4 +1,4 @@
-import type { Session, SSEMessage, TileMap, HealthResponse } from '../shared/types.js';
+import type { Session, SSEMessage, TileMap, HealthResponse, StatsResponse } from '../shared/types.js';
 import { TILE_SIZE, MAP_W, MAP_H, CAMERA_LERP, LEGEND_TOOLS } from '../shared/constants.js';
 import { generateMap, drawTile } from './world.js';
 import { Character } from './character.js';
@@ -237,22 +237,22 @@ initInteraction(canvas, {
   clearSelection,
 });
 
-// ─── Stats Panel ────────────────────────────────────────
-const statsPanel = document.getElementById('stats-panel')!;
-const statsBody  = document.getElementById('stats-body')!;
-const statsBtn   = document.getElementById('hud-stats-btn')!;
-const statsClose = document.getElementById('stats-close')!;
-const hudTools   = document.getElementById('hud-tools')!;
-
-interface StatsResponse {
-  totalSessions: number;
-  activeSessions: number;
-  totalToolCalls: number;
-  claudeCount: number;
-  codexCount: number;
-  byProject: Record<string, { sessions: number; tools: number }>;
-  byTool: Record<string, number>;
+// ─── Panel toggle helper ────────────────────────────────
+function bindPanel(panelId: string, openBtnId: string, closeBtnId: string, onOpen?: () => void): void {
+  const panel = document.getElementById(panelId)!;
+  const openBtn = document.getElementById(openBtnId)!;
+  const closeBtn = document.getElementById(closeBtnId)!;
+  openBtn.addEventListener('click', () => {
+    const wasHidden = panel.classList.contains('hidden');
+    panel.classList.toggle('hidden');
+    if (wasHidden && onOpen) onOpen();
+  });
+  closeBtn.addEventListener('click', () => panel.classList.add('hidden'));
 }
+
+// ─── Stats Panel ────────────────────────────────────────
+const statsBody  = document.getElementById('stats-body')!;
+const hudTools   = document.getElementById('hud-tools')!;
 
 function statsBar(label: string, value: number, max: number, color: string): string {
   const pct = max > 0 ? (value / max * 100) : 0;
@@ -307,12 +307,7 @@ async function refreshStats(): Promise<void> {
   }
 }
 
-statsBtn.addEventListener('click', () => {
-  const isHidden = statsPanel.classList.contains('hidden');
-  statsPanel.classList.toggle('hidden');
-  if (isHidden) void refreshStats();
-});
-statsClose.addEventListener('click', () => statsPanel.classList.add('hidden'));
+bindPanel('stats-panel', 'hud-stats-btn', 'stats-close', () => void refreshStats());
 
 // ─── Mute Button ────────────────────────────────────────
 const muteBtn = document.getElementById('hud-mute-btn')!;
@@ -323,9 +318,6 @@ muteBtn.addEventListener('click', () => {
 });
 
 // ─── Settings Panel ─────────────────────────────────────
-const settingsPanel = document.getElementById('settings-panel')!;
-const settingsBtn   = document.getElementById('hud-settings-btn')!;
-const settingsClose = document.getElementById('settings-close')!;
 const setEnabled    = document.getElementById('set-enabled') as HTMLInputElement;
 const setDelay      = document.getElementById('set-delay') as HTMLInputElement;
 const setProjects   = document.getElementById('set-projects') as HTMLInputElement;
@@ -337,13 +329,7 @@ function syncSettingsUI(): void {
   setProjects.value = s.projectWhitelist.join(', ');
 }
 
-settingsBtn.addEventListener('click', () => {
-  const isHidden = settingsPanel.classList.contains('hidden');
-  settingsPanel.classList.toggle('hidden');
-  if (isHidden) syncSettingsUI();
-});
-
-settingsClose.addEventListener('click', () => settingsPanel.classList.add('hidden'));
+bindPanel('settings-panel', 'hud-settings-btn', 'settings-close', syncSettingsUI);
 
 setEnabled.addEventListener('change', () => setNotifEnabled(setEnabled.checked));
 setDelay.addEventListener('change', () => setDelayMinutes(Math.max(0, parseInt(setDelay.value, 10) || 0)));
@@ -353,10 +339,7 @@ setProjects.addEventListener('change', () => {
 });
 
 // ─── Diagnostic Panel ───────────────────────────────────
-const diagPanel = document.getElementById('diag-panel')!;
 const diagBody  = document.getElementById('diag-body')!;
-const diagBtn   = document.getElementById('hud-diag-btn')!;
-const diagClose = document.getElementById('diag-close')!;
 
 function diagRow(label: string, value: string, ok: boolean): string {
   return `<div class="diag-row"><span class="diag-label">${label}</span><span class="diag-value ${ok ? 'ok' : 'error'}">${value}</span></div>`;
@@ -385,15 +368,7 @@ async function refreshDiag(): Promise<void> {
   }
 }
 
-diagBtn.addEventListener('click', () => {
-  const isHidden = diagPanel.classList.contains('hidden');
-  diagPanel.classList.toggle('hidden');
-  if (isHidden) void refreshDiag();
-});
-
-diagClose.addEventListener('click', () => {
-  diagPanel.classList.add('hidden');
-});
+bindPanel('diag-panel', 'hud-diag-btn', 'diag-close', () => void refreshDiag());
 
 // ─── Legend ──────────────────────────────────────────────
 document.getElementById('legend-items')!.innerHTML = LEGEND_TOOLS.map(([name, icon, color]) => `

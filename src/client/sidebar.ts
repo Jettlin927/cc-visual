@@ -242,9 +242,10 @@ export function renderSessionList(
   renderFilters(list);
   updateHudWaiting(list);
 
-  // Clean stale seen entries
+  // Clean stale seen entries using a Set for O(1) lookup
+  const waitingIds = new Set(list.filter(s => s.status === 'waiting').map(s => s.sessionId));
   for (const id of seenSessions) {
-    if (!list.some(s => s.sessionId === id && s.status === 'waiting')) {
+    if (!waitingIds.has(id)) {
       seenSessions.delete(id);
       seenDirty = true;
     }
@@ -256,21 +257,25 @@ export function renderSessionList(
 
   const filtered = filterSessions(list);
 
-  // Split waiting vs non-waiting
-  const waitingSessions = filtered.filter(s => s.status === 'waiting');
-  const otherSessions = filtered.filter(s => s.status !== 'waiting');
+  // Single-pass partition into waiting, pinned, and other
+  const waitingSessions: Session[] = [];
+  const pinned: Session[] = [];
+  const otherSessions: Session[] = [];
+  for (const s of filtered) {
+    if (s.status === 'waiting') {
+      waitingSessions.push(s);
+    } else if (pinnedSessions.has(s.sessionId)) {
+      pinned.push(s);
+    } else {
+      otherSessions.push(s);
+    }
+  }
 
-  // Sort waiting by wait time descending (longest first = smallest modifiedAt)
   waitingSessions.sort((a, b) => a.modifiedAt - b.modifiedAt);
-
-  // Sort others: running first, then idle
   const order: Record<string, number> = { running: 0, idle: 1 };
   otherSessions.sort((a, b) => (order[a.status] ?? 1) - (order[b.status] ?? 1));
 
   container.innerHTML = '';
-
-  // ── Pinned sessions ─────────────────────────────────
-  const pinned = filtered.filter(s => pinnedSessions.has(s.sessionId) && s.status !== 'waiting');
   if (pinned.length > 0) {
     const pinSection = document.createElement('div');
     pinSection.className = 'pending-section';

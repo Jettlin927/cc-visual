@@ -251,37 +251,32 @@ export function createRouter(config: AppConfig): Router {
     res.json(result);
   });
 
+  // Shared stats aggregation
+  function aggregateSessions(sessions: Session[]) {
+    let totalToolCalls = 0, claudeCount = 0, codexCount = 0;
+    const byProject: Record<string, { sessions: number; tools: number }> = {};
+    const byTool: Record<string, number> = {};
+    for (const s of sessions) {
+      totalToolCalls += s.toolCount;
+      if (s.source === 'claude') claudeCount++; else codexCount++;
+      if (!byProject[s.project]) byProject[s.project] = { sessions: 0, tools: 0 };
+      byProject[s.project].sessions++;
+      byProject[s.project].tools += s.toolCount;
+      if (s.lastTool) byTool[s.lastTool.name] = (byTool[s.lastTool.name] ?? 0) + 1;
+    }
+    return { totalToolCalls, claudeCount, codexCount, byProject, byTool };
+  }
+
   // Stats aggregation
   router.get('/api/stats', async (_req, res) => {
     try {
       const sessions = await getActiveSessions(config);
       const active = sessions.filter(s => s.status === 'running' || s.status === 'waiting');
-      let totalToolCalls = 0;
-      let claudeCount = 0;
-      let codexCount = 0;
-      const byProject: Record<string, { sessions: number; tools: number }> = {};
-      const byTool: Record<string, number> = {};
-
-      for (const s of sessions) {
-        totalToolCalls += s.toolCount;
-        if (s.source === 'claude') claudeCount++; else codexCount++;
-        const proj = s.project;
-        if (!byProject[proj]) byProject[proj] = { sessions: 0, tools: 0 };
-        byProject[proj].sessions++;
-        byProject[proj].tools += s.toolCount;
-        if (s.lastTool) {
-          byTool[s.lastTool.name] = (byTool[s.lastTool.name] ?? 0) + 1;
-        }
-      }
-
+      const agg = aggregateSessions(sessions);
       res.json({
         totalSessions: sessions.length,
         activeSessions: active.length,
-        totalToolCalls,
-        claudeCount,
-        codexCount,
-        byProject,
-        byTool,
+        ...agg,
       });
     } catch (err) {
       res.status(500).json({ error: (err as Error).message });
@@ -317,26 +312,13 @@ export function createRouter(config: AppConfig): Router {
     try {
       const sessions = await getActiveSessions(config);
       const today = new Date().toISOString().slice(0, 10);
-      let totalToolCalls = 0;
-      let claudeCount = 0;
-      let codexCount = 0;
-      const byProject: Record<string, { sessions: number; tools: number }> = {};
-
-      for (const s of sessions) {
-        totalToolCalls += s.toolCount;
-        if (s.source === 'claude') claudeCount++; else codexCount++;
-        const proj = s.project;
-        if (!byProject[proj]) byProject[proj] = { sessions: 0, tools: 0 };
-        byProject[proj].sessions++;
-        byProject[proj].tools += s.toolCount;
-      }
-
+      const agg = aggregateSessions(sessions);
       saveDailyStats({
         date: today,
         totalSessions: sessions.length,
-        toolCalls: totalToolCalls,
-        bySource: { claude: claudeCount, codex: codexCount },
-        byProject,
+        toolCalls: agg.totalToolCalls,
+        bySource: { claude: agg.claudeCount, codex: agg.codexCount },
+        byProject: agg.byProject,
       });
       res.json({ ok: true, date: today });
     } catch (err) {
