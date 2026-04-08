@@ -1,8 +1,8 @@
-import type { Session, SSEMessage, TileMap } from '../shared/types.js';
+import type { Session, SSEMessage, TileMap, HealthResponse } from '../shared/types.js';
 import { TILE_SIZE, MAP_W, MAP_H, CAMERA_LERP, LEGEND_TOOLS } from '../shared/constants.js';
 import { generateMap, drawTile } from './world.js';
 import { Character } from './character.js';
-import { showToast, showBadge } from './notifications.js';
+import { showToast, showBadge, notifyWaiting, toggleMute, isMuted } from './notifications.js';
 import { renderSessionList } from './sidebar.js';
 import { initPanel, showPanel, hidePanel, renderPanel, fetchHistory } from './panel.js';
 import { initInteraction } from './interaction.js';
@@ -175,6 +175,7 @@ function reconcileSessions(incoming: Session[]): void {
       if (prev?.status === 'running' && session.status === 'waiting') {
         showToast(`\uD83D\uDD14 Needs review: ${id.slice(0,8)}`);
         showBadge(id, 'waiting');
+        notifyWaiting(id, session.project);
       }
       ch.updateSession(session);
     }
@@ -236,17 +237,15 @@ initInteraction(canvas, {
   clearSelection,
 });
 
-// ─── Diagnostic Panel ───────────────────────────────────
-interface HealthResponse {
-  claudeDir: { path: string; exists: boolean };
-  codexDir: { path: string; exists: boolean };
-  codexSqlite: { readable: boolean };
-  lastScanAt: string | null;
-  scannedFiles: number;
-  filteredSessions: number;
-  sseClients: number;
-}
+// ─── Mute Button ────────────────────────────────────────
+const muteBtn = document.getElementById('hud-mute-btn')!;
+muteBtn.textContent = isMuted() ? '🔇' : '🔊';
+muteBtn.addEventListener('click', () => {
+  toggleMute();
+  muteBtn.textContent = isMuted() ? '🔇' : '🔊';
+});
 
+// ─── Diagnostic Panel ───────────────────────────────────
 const diagPanel = document.getElementById('diag-panel')!;
 const diagBody  = document.getElementById('diag-body')!;
 const diagBtn   = document.getElementById('hud-diag-btn')!;
