@@ -425,12 +425,30 @@ export class Character {
     ctx.fillText(label, tx2, ty2);
   }
 
+  private _getToolPreview(): string {
+    const input = this.currentTool?.input;
+    if (!input) return '';
+    const raw = (input.command || input.file_path || input.pattern ||
+      input.query || input.description || input.prompt || '') as string;
+    return raw.slice(0, 40);
+  }
+
   private _drawBubble(ctx: CanvasRenderingContext2D, sx: number, sy: number, t: number): void {
     const meta: ToolMeta = TOOL_META[this.currentTool?.name ?? ''] || TOOL_DEFAULT;
-    const bx = sx + 14;
-    const by = sy - 30;
+    const preview = this._getToolPreview();
     const alpha = this.bubbleAlpha;
     const scale = this.bubbleScale;
+
+    // Measure text to size bubble
+    ctx.save();
+    ctx.font = '6px monospace';
+    const previewWidth = preview ? ctx.measureText(preview).width : 0;
+    ctx.restore();
+
+    const bw = Math.max(58, previewWidth + 12);
+    const bh = preview ? 36 : 28;
+    const bx = sx - bw / 2 + 5;
+    const by = sy - 30;
 
     ctx.save();
     ctx.globalAlpha = alpha;
@@ -442,22 +460,21 @@ export class Character {
     ctx.strokeStyle = meta.color;
     ctx.lineWidth = 2;
 
-    const bw = 54, bh = 28;
     ctx.fillRect(-4, -bh + 2, bw, bh);
     ctx.strokeRect(-4, -bh + 2, bw, bh);
 
     // Bubble tail
     ctx.fillStyle = 'rgba(15,20,40,0.92)';
     ctx.beginPath();
-    ctx.moveTo(-4, -bh + bh - 2);
-    ctx.lineTo(-12, 0);
-    ctx.lineTo(4, -bh + bh - 2);
+    ctx.moveTo(bw / 2 - 6, 0);
+    ctx.lineTo(bw / 2 - 2, 6);
+    ctx.lineTo(bw / 2 + 2, 0);
     ctx.fill();
     ctx.strokeStyle = meta.color;
     ctx.beginPath();
-    ctx.moveTo(-4, 0);
-    ctx.lineTo(-12, 6);
-    ctx.lineTo(2, 0);
+    ctx.moveTo(bw / 2 - 6, 0);
+    ctx.lineTo(bw / 2 - 2, 6);
+    ctx.lineTo(bw / 2 + 2, 0);
     ctx.stroke();
 
     // Tool label
@@ -465,11 +482,18 @@ export class Character {
     ctx.fillStyle = meta.color;
     ctx.fillText(meta.label, -2, -bh + 12);
 
-    // Running dots animation
+    // Running dots
     const dots = Math.floor(t / 400) % 4;
     ctx.fillStyle = '#fff8';
     ctx.font = '10px monospace';
-    ctx.fillText('.'.repeat(dots), -2, -bh + 24);
+    ctx.fillText('.'.repeat(dots), -2 + ctx.measureText(meta.label).width + 4, -bh + 12);
+
+    // Preview text (tool input)
+    if (preview) {
+      ctx.font = '6px monospace';
+      ctx.fillStyle = '#aaa';
+      ctx.fillText(preview, -2, -bh + 24);
+    }
 
     ctx.restore();
   }

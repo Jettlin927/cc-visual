@@ -14,7 +14,7 @@
   --orange:    #fa0;
   --text:      #eee;
   --muted:     #666;
-  --sidebar-w: 220px;
+  --sidebar-w: 260px;
   --hud-h:     40px;
 }
 
@@ -123,8 +123,8 @@ body {
 
 .filter-btn {
   font-family: var(--px);
-  font-size: 6px;
-  padding: 2px 5px;
+  font-size: 7px;
+  padding: 3px 6px;
   background: transparent;
   color: var(--muted);
   border: 1px solid var(--muted);
@@ -150,22 +150,24 @@ body {
 
 .filter-search {
   font-family: var(--px);
-  font-size: 7px;
-  padding: 3px 6px;
-  background: rgba(255,255,255,0.04);
+  font-size: 8px;
+  padding: 5px 8px;
+  background: rgba(255,255,255,0.06);
   color: var(--text);
-  border: 1px solid var(--muted);
+  border: 2px solid rgba(0,255,255,0.3);
   outline: none;
   width: 100%;
   box-sizing: border-box;
 }
 .filter-search:focus {
   border-color: var(--cyan);
+  background: rgba(0,255,255,0.05);
+  box-shadow: 0 0 6px rgba(0,255,255,0.2);
 }
 .filter-search::placeholder {
-  color: var(--muted);
+  color: rgba(0,255,255,0.4);
   font-family: var(--px);
-  font-size: 6px;
+  font-size: 7px;
 }
 
 /* Collapsed sidebar */
@@ -231,7 +233,7 @@ body {
 .sess-item.idle     .sess-status-dot { background: var(--muted);  }
 
 .sess-id {
-  font-size: 8px;
+  font-size: 9px;
   color: var(--cyan);
   letter-spacing: 0.5px;
 }
@@ -243,7 +245,7 @@ body {
 }
 
 .sess-project {
-  font-size: 7px;
+  font-size: 8px;
   color: var(--muted);
   margin-bottom: 5px;
   white-space: nowrap;
@@ -258,7 +260,7 @@ body {
 }
 
 .sess-badge {
-  font-size: 6px;
+  font-size: 7px;
   padding: 1px 5px;
   border: 1px solid;
   letter-spacing: 0.5px;
@@ -278,7 +280,7 @@ body {
 .source-badge.codex  { border-color: #58a6ff; color: #58a6ff; }
 
 .sess-tool {
-  font-size: 7px;
+  font-size: 8px;
   color: var(--text);
   white-space: nowrap;
   overflow: hidden;
@@ -293,12 +295,12 @@ body {
 }
 
 .sess-count {
-  font-size: 6px;
+  font-size: 7px;
   color: var(--muted);
 }
 
 .sess-ago {
-  font-size: 6px;
+  font-size: 7px;
   color: var(--muted);
 }
 
