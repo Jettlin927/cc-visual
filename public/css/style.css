@@ -104,6 +104,69 @@ body {
 }
 .sidebar-toggle:hover { color: var(--cyan); border-color: var(--cyan); }
 
+/* ─── SIDEBAR FILTERS ─── */
+#sidebar-filters {
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(233,69,96,0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.filter-row {
+  display: flex;
+  gap: 3px;
+  flex-wrap: wrap;
+}
+
+.filter-btn {
+  font-family: var(--px);
+  font-size: 6px;
+  padding: 2px 5px;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--muted);
+  cursor: pointer;
+  transition: all 0.1s;
+  white-space: nowrap;
+}
+.filter-btn:hover {
+  color: var(--cyan);
+  border-color: var(--cyan);
+}
+.filter-btn.active {
+  color: var(--cyan);
+  border-color: var(--cyan);
+  background: rgba(0,255,255,0.1);
+}
+
+.filter-badge {
+  font-size: 5px;
+  margin-left: 2px;
+  opacity: 0.7;
+}
+
+.filter-search {
+  font-family: var(--px);
+  font-size: 7px;
+  padding: 3px 6px;
+  background: rgba(255,255,255,0.04);
+  color: var(--text);
+  border: 1px solid var(--muted);
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+.filter-search:focus {
+  border-color: var(--cyan);
+}
+.filter-search::placeholder {
+  color: var(--muted);
+  font-family: var(--px);
+  font-size: 6px;
+}
+
 /* Collapsed sidebar */
 #session-sidebar {
   transition: width 0.2s ease;
@@ -114,6 +177,9 @@ body {
 #session-sidebar.collapsed .sidebar-header > span,
 #session-sidebar.collapsed .sidebar-count,
 #session-sidebar.collapsed #session-list {
+  display: none;
+}
+#session-sidebar.collapsed #sidebar-filters {
   display: none;
 }
 #session-sidebar.collapsed .sidebar-header {
