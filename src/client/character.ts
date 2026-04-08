@@ -225,13 +225,16 @@ export class Character {
     }
   }
 
+  private static readonly SPRITE_SCALE = 1.5;
+
   draw(ctx: CanvasRenderingContext2D, camX: number, camY: number, t: number): void {
     const sx = Math.floor(this.x - camX);
     const sy = Math.floor(this.y - camY) + Math.floor(this.bobOffset);
     const dpr = window.devicePixelRatio || 1;
-    if (sx < -40 || sx > ctx.canvas.width / dpr + 40) return;
-    if (sy < -60 || sy > ctx.canvas.height / dpr + 60) return;
+    if (sx < -60 || sx > ctx.canvas.width / dpr + 60) return;
+    if (sy < -80 || sy > ctx.canvas.height / dpr + 80) return;
 
+    const sc = Character.SPRITE_SCALE;
     ctx.save();
 
     if (this.selected) {
@@ -239,18 +242,24 @@ export class Character {
       ctx.shadowColor = '#0ff';
     }
 
+    // Scale character sprite around its position
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.scale(sc, sc);
+    ctx.translate(-sx, -sy);
     this._drawCharacter(ctx, sx, sy, t);
+    ctx.restore();
 
     ctx.restore();
 
-    this._drawNameTag(ctx, sx, sy);
+    this._drawNameTag(ctx, sx, sy - 10);
 
     if (this.session.status === 'waiting') {
-      this._drawExclamationBubble(ctx, sx, sy, t);
+      this._drawExclamationBubble(ctx, sx, sy - 10, t);
     }
 
     if (this.bubbleAlpha > 0.01) {
-      this._drawBubble(ctx, sx, sy, t);
+      this._drawBubble(ctx, sx, sy - 10, t);
     }
   }
 
@@ -457,18 +466,45 @@ export class Character {
     return inputPreview(input).slice(0, 40);
   }
 
+  private static readonly BUBBLE_MAX_W = 160;
+  private static readonly BUBBLE_LINE_H = 10;
+  private static readonly BUBBLE_PAD = 6;
+
+  private _wrapText(text: string, maxW: number): string[] {
+    if (!text) return [];
+    const charW = 4.2; // approx 7px monospace char width
+    const maxChars = Math.floor(maxW / charW);
+    const lines: string[] = [];
+    for (let i = 0; i < text.length; i += maxChars) {
+      lines.push(text.slice(i, i + maxChars));
+    }
+    return lines;
+  }
+
   private _drawBubble(ctx: CanvasRenderingContext2D, sx: number, sy: number, t: number): void {
     const meta: ToolMeta = TOOL_META[this.currentTool?.name ?? ''] || TOOL_DEFAULT;
     const preview = this._getToolPreview();
     const alpha = this.bubbleAlpha;
     const scale = this.bubbleScale;
 
-    // Estimate preview width (~6px per char in monospace 6px)
-    const previewWidth = preview ? preview.length * 4 : 0;
-    const bw = Math.max(58, previewWidth + 12);
-    const bh = preview ? 36 : 28;
-    const bx = sx - bw / 2 + 5;
-    const by = sy - 30;
+    const pad = Character.BUBBLE_PAD;
+    const lineH = Character.BUBBLE_LINE_H;
+    const maxContentW = Character.BUBBLE_MAX_W - pad * 2;
+
+    // Word-wrap preview text
+    const previewLines = this._wrapText(preview, maxContentW);
+
+    // Compute bubble size
+    const labelW = meta.label.length * 8 + 20; // label + dots space
+    const previewW = previewLines.length > 0
+      ? Math.max(...previewLines.map(l => l.length * 4.2))
+      : 0;
+    const bw = Math.max(60, Math.min(Character.BUBBLE_MAX_W, Math.max(labelW, previewW) + pad * 2));
+    const contentLines = 1 + previewLines.length; // label row + preview rows
+    const bh = contentLines * lineH + pad * 2;
+
+    const bx = sx - bw / 2;
+    const by = sy - 35;
 
     ctx.save();
     ctx.globalAlpha = alpha;
@@ -479,40 +515,41 @@ export class Character {
     ctx.fillStyle = 'rgba(15,20,40,0.92)';
     ctx.strokeStyle = meta.color;
     ctx.lineWidth = 2;
+    ctx.fillRect(0, -bh, bw, bh);
+    ctx.strokeRect(0, -bh, bw, bh);
 
-    ctx.fillRect(-4, -bh + 2, bw, bh);
-    ctx.strokeRect(-4, -bh + 2, bw, bh);
-
-    // Bubble tail
+    // Bubble tail (centered)
     ctx.fillStyle = 'rgba(15,20,40,0.92)';
     ctx.beginPath();
-    ctx.moveTo(bw / 2 - 6, 0);
-    ctx.lineTo(bw / 2 - 2, 6);
-    ctx.lineTo(bw / 2 + 2, 0);
+    ctx.moveTo(bw / 2 - 5, 0);
+    ctx.lineTo(bw / 2, 6);
+    ctx.lineTo(bw / 2 + 5, 0);
     ctx.fill();
     ctx.strokeStyle = meta.color;
     ctx.beginPath();
-    ctx.moveTo(bw / 2 - 6, 0);
-    ctx.lineTo(bw / 2 - 2, 6);
-    ctx.lineTo(bw / 2 + 2, 0);
+    ctx.moveTo(bw / 2 - 5, 0);
+    ctx.lineTo(bw / 2, 6);
+    ctx.lineTo(bw / 2 + 5, 0);
     ctx.stroke();
 
     // Tool label
+    let textY = -bh + pad + lineH - 2;
     ctx.font = '7px "Press Start 2P", monospace';
     ctx.fillStyle = meta.color;
-    ctx.fillText(meta.label, -2, -bh + 12);
+    ctx.fillText(meta.label, pad, textY);
 
-    // Running dots (estimate label width: ~8px per char in Press Start 2P 7px)
+    // Running dots
     const dots = Math.floor(t / 400) % 4;
     ctx.fillStyle = '#fff8';
     ctx.font = '10px monospace';
-    ctx.fillText('.'.repeat(dots), -2 + meta.label.length * 8 + 4, -bh + 12);
+    ctx.fillText('.'.repeat(dots), pad + meta.label.length * 8 + 4, textY);
 
-    // Preview text (tool input)
-    if (preview) {
-      ctx.font = '6px monospace';
-      ctx.fillStyle = '#aaa';
-      ctx.fillText(preview, -2, -bh + 24);
+    // Preview lines
+    ctx.font = '7px monospace';
+    ctx.fillStyle = '#bbb';
+    for (const line of previewLines) {
+      textY += lineH;
+      ctx.fillText(line, pad, textY);
     }
 
     ctx.restore();

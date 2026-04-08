@@ -40,6 +40,9 @@ async function getActiveSessions(config: AppConfig): Promise<Session[]> {
 export function createRouter(config: AppConfig): Router {
   const router = Router();
 
+  // Normalized claude dir for path validation (Windows backslash compat)
+  const normalizedClaudeDir = config.claudeDir.replace(/\\/g, '/');
+
   // Track SSE client count and last scan time
   let sseClients = 0;
   let lastScanAt: string | null = null;
@@ -118,12 +121,13 @@ export function createRouter(config: AppConfig): Router {
   // Full transcript parse
   router.get('/api/transcript', async (req, res) => {
     const filePath = req.query.path as string | undefined;
-    if (!filePath || !filePath.startsWith(config.claudeDir)) {
+    const normalizedPath = filePath?.replace(/\\/g, '/');
+    if (!normalizedPath || !normalizedPath.startsWith(normalizedClaudeDir)) {
       res.status(400).json({ error: 'Invalid path' });
       return;
     }
     try {
-      const content = await readFileAsync(filePath, 'utf-8');
+      const content = await readFileAsync(filePath!, 'utf-8');
       const lines = content.trim().split('\n');
       const entries: JournalEntry[] = lines
         .map(l => {
@@ -165,7 +169,8 @@ export function createRouter(config: AppConfig): Router {
   // SSE: watch a single file
   router.get('/api/watch', (req, res) => {
     const filePath = req.query.path as string | undefined;
-    if (!filePath || !filePath.startsWith(config.claudeDir)) {
+    const normalizedWatchPath = filePath?.replace(/\\/g, '/');
+    if (!normalizedWatchPath || !normalizedWatchPath.startsWith(normalizedClaudeDir)) {
       res.status(400).json({ error: 'Invalid path' });
       return;
     }
@@ -180,7 +185,7 @@ export function createRouter(config: AppConfig): Router {
     let lastSize = 0;
     const send = async (): Promise<void> => {
       try {
-        const s = await statAsync(filePath);
+        const s = await statAsync(filePath!);
         if (s.size !== lastSize) {
           lastSize = s.size;
           res.write('data: {"type":"changed"}\n\n');
@@ -189,7 +194,7 @@ export function createRouter(config: AppConfig): Router {
         // file may be temporarily unavailable
       }
     };
-    const watcher = watch(filePath, () => void send());
+    const watcher = watch(filePath!, () => void send());
     const iv = setInterval(() => void send(), SSE_FILE_POLL_MS);
     req.on('close', () => {
       watcher.close();

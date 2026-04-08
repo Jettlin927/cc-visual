@@ -163,12 +163,14 @@ export async function fetchHistory(ch: Character): Promise<void> {
 
     if (ch.session.source === 'codex') {
       const r = await fetch(`/api/codex-history?threadId=${encodeURIComponent(ch.session.sessionId)}`);
+      if (!r.ok) throw new Error(`API ${r.status}`);
       const d = await r.json();
       allToolCalls = (d.toolCalls || []) as ToolCall[];
       toolCalls = allToolCalls.slice(-HISTORY_ITEMS).reverse();
       recentErrors = toolCalls.filter(tc => tc.status === 'error').slice(0, 3);
     } else {
       const r = await fetch(`/api/transcript?path=${encodeURIComponent(ch.session.filePath)}`);
+      if (!r.ok) throw new Error(`API ${r.status}`);
       const d = await r.json();
       allToolCalls = (d.toolCalls || []) as ToolCall[];
       toolCalls = allToolCalls.slice(-HISTORY_ITEMS).reverse();
@@ -224,5 +226,8 @@ export async function fetchHistory(ch: Character): Promise<void> {
         <span class="ph-dur">${fmtDuration(tc.duration)}</span>
       </div>`;
     }).join('');
-  } catch { /* ignore fetch errors */ }
+  } catch (err) {
+    panelReply.textContent = 'Failed to load';
+    panelSlowest.innerHTML = `<div style="font-size:7px;color:var(--red)">${esc(String(err))}</div>`;
+  }
 }
