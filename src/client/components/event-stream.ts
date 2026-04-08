@@ -1,12 +1,5 @@
 import type { ToolCall } from '../../shared/types.js';
-import { fmtTime, fmtDuration, inputPreview, getToolClass, truncate } from '../utils/formatters.js';
-
-function esc(s: string): string {
-  if (!s) return '';
-  const d = document.createElement('div');
-  d.textContent = s;
-  return d.innerHTML;
-}
+import { esc, fmtTime, fmtDuration, inputPreview, getToolClass, truncate } from '../utils/formatters.js';
 
 export class EventStream {
   private container: HTMLElement;
