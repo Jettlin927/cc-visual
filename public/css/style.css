@@ -416,3 +416,94 @@ body {
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: #e9456044; }
+
+/* ─── PENDING SECTION ─── */
+.pending-section {
+  border-bottom: 2px solid var(--orange);
+  margin-bottom: 4px;
+}
+
+.pending-header {
+  padding: 5px 10px;
+  background: rgba(250, 160, 0, 0.12);
+  border-bottom: 1px solid rgba(250, 160, 0, 0.3);
+  font-size: 7px;
+  color: var(--orange);
+  letter-spacing: 1px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pending-header-count {
+  font-size: 6px;
+  padding: 1px 5px;
+  background: var(--orange);
+  color: #000;
+}
+
+.sess-waited {
+  font-size: 6px;
+  color: var(--orange);
+  margin-left: auto;
+}
+
+.sess-item.pending-warn {
+  background: rgba(244, 68, 68, 0.07);
+}
+
+.sess-item.pending-warn .sess-waited {
+  color: var(--red);
+  animation: blink 1.2s steps(2) infinite;
+}
+
+.sess-item.pending-warn .sess-status-dot {
+  background: var(--red);
+  animation: blink 0.8s steps(2) infinite;
+  box-shadow: 0 0 5px var(--red);
+}
+
+/* ─── GROUP HEADERS ─── */
+.group-header {
+  padding: 5px 10px;
+  background: rgba(0, 255, 255, 0.05);
+  border-bottom: 1px solid rgba(0, 255, 255, 0.15);
+  border-top: 1px solid rgba(0, 255, 255, 0.15);
+  font-size: 7px;
+  color: var(--cyan);
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  user-select: none;
+  transition: background 0.1s;
+}
+
+.group-header:hover {
+  background: rgba(0, 255, 255, 0.1);
+}
+
+.group-header-arrow {
+  font-size: 6px;
+  transition: transform 0.15s;
+}
+
+.group-header.collapsed .group-header-arrow {
+  transform: rotate(-90deg);
+}
+
+.group-header-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.group-header-count {
+  font-size: 6px;
+  padding: 1px 5px;
+  border: 1px solid var(--cyan);
+  color: var(--cyan);
+  flex-shrink: 0;
+}

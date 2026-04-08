@@ -12,12 +12,15 @@ type StatusFilter = 'all' | 'running' | 'waiting' | 'idle';
 let activeStatus: StatusFilter = 'all';
 let activeSources: Set<SessionSource> = new Set(['claude', 'codex']);
 let searchText = '';
+let groupByProject = false;
+const collapsedGroups: Set<string> = new Set();
 
 /** Stash latest data so filter UI events can trigger re-render */
 let lastList: Session[] = [];
 let lastSelected: string | null = null;
 let lastCallbacks: SidebarCallbacks | null = null;
 let filtersInitialized = false;
+let timerStarted = false;
 
 // ─── Helpers ────────────────────────────────────────────
 function timeAgo(ms: number): string {
@@ -25,6 +28,16 @@ function timeAgo(ms: number): string {
   if (s < 60)   return s + 's ago';
   if (s < 3600) return Math.floor(s / 60) + 'm ago';
   return Math.floor(s / 3600) + 'h ago';
+}
+
+function waitedMinutes(ms: number): number {
+  return Math.floor((Date.now() - ms) / 60000);
+}
+
+function waitedLabel(ms: number): string {
+  const m = waitedMinutes(ms);
+  if (m < 1) return 'just now';
+  return `waited ${m}m`;
 }
 
 function filterSessions(list: Session[]): Session[] {
@@ -87,7 +100,10 @@ function renderFilters(list: Session[]): void {
     { key: 'codex', label: 'GPT' },
   ];
 
+  // Preserve the GRP button before clearing
+  const existingGrp = document.getElementById('group-toggle');
   sourceRow.innerHTML = '';
+
   for (const { key, label } of sources) {
     const btn = document.createElement('button');
     btn.className = 'filter-btn' + (activeSources.has(key) ? ' active' : '');
@@ -103,7 +119,13 @@ function renderFilters(list: Session[]): void {
     sourceRow.appendChild(btn);
   }
 
-  // Search box — bind once
+  // Re-append GRP toggle button (update active state)
+  if (existingGrp) {
+    existingGrp.className = 'filter-btn' + (groupByProject ? ' active' : '');
+    sourceRow.appendChild(existingGrp);
+  }
+
+  // Bind one-time event listeners
   if (!filtersInitialized) {
     const searchInput = document.getElementById('filter-search') as HTMLInputElement | null;
     if (searchInput) {
@@ -112,7 +134,24 @@ function renderFilters(list: Session[]): void {
         reRender();
       });
     }
+
+    const grpBtn = document.getElementById('group-toggle');
+    if (grpBtn) {
+      grpBtn.addEventListener('click', () => {
+        groupByProject = !groupByProject;
+        reRender();
+      });
+    }
+
     filtersInitialized = true;
+  }
+
+  // Start 30s timer for wait-time updates (once)
+  if (!timerStarted) {
+    timerStarted = true;
+    setInterval(() => {
+      reRender();
+    }, 30000);
   }
 }
 
@@ -137,19 +176,98 @@ export function renderSessionList(
   renderFilters(list);
 
   const filtered = filterSessions(list);
-  const order: Record<string, number> = { waiting: 0, running: 1, idle: 2 };
-  const sorted = [...filtered].sort((a, b) => (order[a.status] ?? 2) - (order[b.status] ?? 2));
+
+  // Split waiting vs non-waiting
+  const waitingSessions = filtered.filter(s => s.status === 'waiting');
+  const otherSessions = filtered.filter(s => s.status !== 'waiting');
+
+  // Sort waiting by wait time descending (longest first = smallest modifiedAt)
+  waitingSessions.sort((a, b) => a.modifiedAt - b.modifiedAt);
+
+  // Sort others: running first, then idle
+  const order: Record<string, number> = { running: 0, idle: 1 };
+  otherSessions.sort((a, b) => (order[a.status] ?? 1) - (order[b.status] ?? 1));
 
   container.innerHTML = '';
-  for (const s of sorted) {
-    container.appendChild(buildSessionItem(s, selected, callbacks));
+
+  // ── Pending section ──────────────────────────────────
+  if (waitingSessions.length > 0) {
+    const pendingSection = document.createElement('div');
+    pendingSection.className = 'pending-section';
+
+    const header = document.createElement('div');
+    header.className = 'pending-header';
+    header.innerHTML = `
+      <span>&#9650; PENDING</span>
+      <span class="pending-header-count">${waitingSessions.length}</span>
+    `;
+    pendingSection.appendChild(header);
+
+    for (const s of waitingSessions) {
+      pendingSection.appendChild(buildSessionItem(s, selected, callbacks, true));
+    }
+
+    container.appendChild(pendingSection);
+  }
+
+  // ── Non-waiting sessions ─────────────────────────────
+  if (groupByProject) {
+    // Group by project name
+    const groups: Map<string, Session[]> = new Map();
+    for (const s of otherSessions) {
+      const key = prettyProject(s.project);
+      const existing = groups.get(key);
+      if (existing) {
+        existing.push(s);
+      } else {
+        groups.set(key, [s]);
+      }
+    }
+
+    for (const [projectName, sessions] of groups) {
+      const isCollapsed = collapsedGroups.has(projectName);
+
+      const groupHeader = document.createElement('div');
+      groupHeader.className = 'group-header' + (isCollapsed ? ' collapsed' : '');
+      groupHeader.innerHTML = `
+        <span class="group-header-arrow">&#9660;</span>
+        <span class="group-header-name">${projectName}</span>
+        <span class="group-header-count">${sessions.length}</span>
+      `;
+      groupHeader.addEventListener('click', () => {
+        if (collapsedGroups.has(projectName)) {
+          collapsedGroups.delete(projectName);
+        } else {
+          collapsedGroups.add(projectName);
+        }
+        reRender();
+      });
+      container.appendChild(groupHeader);
+
+      if (!isCollapsed) {
+        for (const s of sessions) {
+          container.appendChild(buildSessionItem(s, selected, callbacks, false));
+        }
+      }
+    }
+  } else {
+    // Flat list
+    for (const s of otherSessions) {
+      container.appendChild(buildSessionItem(s, selected, callbacks, false));
+    }
   }
 }
 
 // ─── Session item builder ───────────────────────────────
-function buildSessionItem(s: Session, selected: string | null, callbacks: SidebarCallbacks): HTMLElement {
+function buildSessionItem(
+  s: Session,
+  selected: string | null,
+  callbacks: SidebarCallbacks,
+  isPending: boolean,
+): HTMLElement {
   const el = document.createElement('div');
-  el.className = `sess-item ${s.status}`;
+  const isWarn = isPending && waitedMinutes(s.modifiedAt) >= 5;
+  el.className = `sess-item ${s.status}` + (isWarn ? ' pending-warn' : '');
   el.dataset.id = s.sessionId;
   if (s.sessionId === selected) el.classList.add('selected');
 
@@ -164,12 +282,17 @@ function buildSessionItem(s: Session, selected: string | null, callbacks: Sideba
     ? `<span class="source-badge codex" title="${s.model || 'Codex'}">GPT</span>`
     : `<span class="source-badge claude" title="Claude Code">CC</span>`;
 
+  const waitedBadge = isPending
+    ? `<span class="sess-waited">${waitedLabel(s.modifiedAt)}</span>`
+    : '';
+
   el.innerHTML = `
     <div class="sess-top">
       <span class="sess-status-dot"></span>
-      <span class="sess-id">${s.sessionId.slice(0,8)}</span>
+      <span class="sess-id">${s.sessionId.slice(0, 8)}</span>
       ${sourceBadge}
       ${needsReview ? `<span class="sess-alert" title="Needs your review">\uD83D\uDD14</span>` : ''}
+      ${waitedBadge}
     </div>
     <div class="sess-project">${prettyProject(s.project)}</div>
     <div class="sess-status-row">
