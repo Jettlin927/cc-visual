@@ -14,7 +14,7 @@ import { extractLatestToolCall } from './tool-parser.js';
  */
 export async function enrichSession(
   project: ScannedProject,
-  alive: Set<string>,
+  alive: Map<string, number>,
 ): Promise<ClaudeSession> {
   const tail = await readTail(project.filePath, JSONL_TAIL_LINES);
   const lastTool = extractLatestToolCall(tail);
@@ -26,7 +26,7 @@ export async function enrichSession(
     lastTool,
     status,
     toolCount,
-    pid: null,
+    pid: alive.get(project.sessionId) ?? null,
   };
 }
 

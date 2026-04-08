@@ -1,6 +1,6 @@
 import type { Session, SessionSource, SessionStatus } from '../shared/types.js';
 import { TOOL_META } from '../shared/tool-metadata.js';
-import { prettyProject } from './utils/formatters.js';
+import { prettyProject, focusWindow } from './utils/formatters.js';
 
 export interface SidebarCallbacks {
   onSelect: (sessionId: string) => void;
@@ -209,17 +209,7 @@ function renderFilters(list: Session[]): void {
   }
 }
 
-function updateHudWaiting(list: Session[]): void {
-  const el = document.getElementById('hud-waiting');
-  if (!el) return;
-  const count = list.filter(s => s.status === 'waiting').length;
-  if (count > 0) {
-    el.textContent = `⚠ ${count} waiting`;
-    el.style.display = '';
-  } else {
-    el.style.display = 'none';
-  }
-}
+// HUD waiting badge is now managed by game.ts reconcileSessions
 
 function reRender(): void {
   if (!lastCallbacks) return;
@@ -240,7 +230,6 @@ export function renderSessionList(
   lastCallbacks = callbacks;
 
   renderFilters(list);
-  updateHudWaiting(list);
 
   // Clean stale seen entries using a Set for O(1) lookup
   const waitingIds = new Set(list.filter(s => s.status === 'waiting').map(s => s.sessionId));
@@ -369,7 +358,7 @@ function buildSessionItem(
 ): HTMLElement {
   const el = document.createElement('div');
   const isWarn = isPending && waitedMinutes(s.modifiedAt) >= 5;
-  el.className = `sess-item ${s.status}` + (isWarn ? ' pending-warn' : '');
+  el.className = `sess-item ${s.status}` + (isWarn ? ' pending-warn' : '') + (isPending ? ' waiting-pulse' : '');
   el.dataset.id = s.sessionId;
   if (s.sessionId === selected) el.classList.add('selected');
 
@@ -378,59 +367,48 @@ function buildSessionItem(
   const toolMeta = TOOL_META[toolName] || {};
   const toolIcon = (toolMeta as { icon?: string }).icon || '';
   const ago = timeAgo(s.modifiedAt);
-  const needsReview = s.status === 'waiting';
 
-  const sourceBadge = s.source === 'codex'
-    ? `<span class="source-badge codex" title="${s.model || 'Codex'}">GPT</span>`
-    : `<span class="source-badge claude" title="Claude Code">CC</span>`;
-
-  const waitedBadge = isPending
+  // Two-line layout:
+  // Line 1: ● project-name    STATUS  [▶]
+  // Line 2: waited 5 min  OR  Edit · 42 calls · 3m ago
+  const line2 = isPending
     ? `<span class="sess-waited">${waitedLabel(s.modifiedAt)}</span>`
-    : '';
+    : `<span class="sess-tool">${toolIcon} ${toolName}</span> · <span class="sess-count">${s.toolCount ?? 0} calls</span> · <span class="sess-ago">${ago}</span>`;
 
   el.innerHTML = `
     <div class="sess-top">
       <span class="sess-status-dot"></span>
-      <span class="sess-id">${s.sessionId.slice(0, 8)}</span>
-      ${sourceBadge}
-      ${needsReview ? `<span class="sess-alert" title="Needs your review">\uD83D\uDD14</span>` : ''}
-      ${waitedBadge}
-    </div>
-    <div class="sess-project">${prettyProject(s.project)}</div>
-    <div class="sess-status-row">
+      <span class="sess-project">${prettyProject(s.project)}</span>
       <span class="sess-badge ${s.status}">${s.status.toUpperCase()}</span>
-      <span class="sess-tool">${toolIcon} ${toolName}</span>
     </div>
-    <div class="sess-meta">
-      <span class="sess-count">${s.toolCount ?? 0} calls</span>
-      <span class="sess-ago">${ago}</span>
-    </div>
+    <div class="sess-meta">${line2}</div>
   `;
 
-  // "已看" button for pending sessions
+  // Add jump button for waiting sessions
   if (isPending) {
-    const isSeen = seenSessions.has(s.sessionId);
-    if (isSeen) el.classList.add('seen');
-
-    const seenBtn = document.createElement('button');
-    seenBtn.className = 'sess-seen-btn';
-    seenBtn.textContent = isSeen ? '✓' : '已看';
-    seenBtn.title = isSeen ? 'Mark as unseen' : 'Mark as seen';
-    seenBtn.addEventListener('click', (e) => {
+    const jumpBtn = document.createElement('button');
+    jumpBtn.className = 'sess-jump-btn';
+    jumpBtn.textContent = '\u25B6';
+    jumpBtn.title = 'Focus window';
+    jumpBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (seenSessions.has(s.sessionId)) {
-        seenSessions.delete(s.sessionId);
-      } else {
-        seenSessions.add(s.sessionId);
-      }
-      seenDirty = true;
-      reRender();
+      void focusSessionWindow(s);
     });
-
     const topRow = el.querySelector('.sess-top');
-    if (topRow) topRow.appendChild(seenBtn);
+    if (topRow) topRow.appendChild(jumpBtn);
   }
 
   el.addEventListener('click', () => callbacks.onSelect(s.sessionId));
   return el;
+}
+
+async function focusSessionWindow(s: Session): Promise<void> {
+  const { showToast } = await import('./notifications.js');
+  try {
+    const pid = 'pid' in s && typeof s.pid === 'number' ? s.pid : undefined;
+    const msg = await focusWindow({ pid, project: s.project });
+    showToast(msg);
+  } catch (err) {
+    showToast(`\u2717 Focus failed: ${err instanceof Error ? err.message : 'network error'}`);
+  }
 }

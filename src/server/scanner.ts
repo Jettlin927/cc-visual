@@ -51,11 +51,11 @@ export async function readTail(filePath: string, nLines: number): Promise<Journa
 
 /**
  * Check ~/.claude/sessions/*.json for live PIDs.
- * Returns a Set of sessionIds whose Claude processes are still running.
+ * Returns a Map of sessionId → pid for sessions whose processes are alive.
  */
-export async function loadAliveSessions(config: AppConfig): Promise<Set<string>> {
+export async function loadAliveSessions(config: AppConfig): Promise<Map<string, number>> {
   const sessionsDir = join(config.claudeDir, 'sessions');
-  const alive = new Set<string>();
+  const alive = new Map<string, number>();
 
   try {
     const files = await readdir(sessionsDir);
@@ -66,7 +66,7 @@ export async function loadAliveSessions(config: AppConfig): Promise<Set<string>>
         if (!sessionId || !pid) continue;
         try {
           process.kill(pid, 0);
-          alive.add(sessionId);
+          alive.set(sessionId, pid);
         } catch {
           // process not running
         }

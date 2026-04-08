@@ -13,15 +13,12 @@
   <div id="hud-top">
     <div class="hud-left">
       <span class="logo-text">👾 CLAUDE WORLD</span>
-      <span id="active-count" class="hud-badge">0 ACTIVE</span>
-      <span id="hud-waiting" class="hud-badge hud-waiting" style="display:none">⚠ 0 waiting</span>
-      <span id="hud-tools" class="hud-badge" style="border-color:var(--magenta);color:var(--magenta);display:none">0 tools</span>
+      <span id="active-count" class="hud-badge" style="display:none">0 ACTIVE</span>
+      <span id="hud-waiting" class="hud-badge hud-waiting">All clear</span>
     </div>
     <div class="hud-right">
-      <button id="hud-stats-btn" class="hud-icon-btn" title="Statistics">📊</button>
       <button id="hud-mute-btn" class="hud-icon-btn" title="Toggle sound">🔊</button>
-      <button id="hud-settings-btn" class="hud-icon-btn" title="Notification settings">🔔</button>
-      <button id="hud-diag-btn" class="hud-icon-btn" title="Diagnostics">⚙</button>
+      <button id="hud-diag-btn" class="hud-icon-btn" title="Details (stats, diagnostics, settings)" data-detail-toggle>⚙</button>
       <span id="hud-time" class="hud-time"></span>
     </div>
   </div>
@@ -64,50 +61,28 @@
     <div id="panel-reply" class="panel-reply"></div>
     <div id="panel-errors-title" class="panel-section-title" style="display:none">ERRORS</div>
     <div id="panel-errors" class="panel-errors"></div>
-    <div class="panel-divider"></div>
-    <div class="panel-section-title">SLOWEST CALLS</div>
-    <div id="panel-slowest" class="panel-history"></div>
-    <div class="panel-divider"></div>
-    <div class="panel-section-title">RECENT CALLS</div>
-    <div id="panel-history" class="panel-history"></div>
+    <!-- Slowest/Recent calls hidden by default, accessible via panel scroll -->
+    <div id="panel-slowest" class="panel-history" style="display:none"></div>
+    <div id="panel-history" class="panel-history" style="display:none"></div>
   </div>
 
-  <!-- Diagnostic Panel -->
-  <div id="diag-panel" class="diag-panel hidden">
+  <!-- Unified Details Panel (stats + diagnostics + settings) -->
+  <div id="details-panel" class="diag-panel hidden" style="width:380px;max-height:85vh">
     <div class="diag-header">
-      <span>DIAGNOSTICS</span>
-      <button id="diag-close" class="px-btn close-btn">✕</button>
-    </div>
-    <div id="diag-body" class="diag-body"></div>
-  </div>
-
-  <!-- Timeline Overlay -->
-  <div id="timeline-overlay" class="timeline-overlay hidden">
-    <div class="timeline-header">
-      <span id="timeline-title">TIMELINE</span>
-      <button id="timeline-close" class="px-btn close-btn">✕</button>
-    </div>
-    <div class="timeline-body">
-      <canvas id="timeline-canvas"></canvas>
-    </div>
-  </div>
-
-  <!-- Stats Panel -->
-  <div id="stats-panel" class="diag-panel hidden" style="width:360px">
-    <div class="diag-header">
-      <span>STATISTICS</span>
-      <button id="stats-close" class="px-btn close-btn">✕</button>
-    </div>
-    <div id="stats-body" class="diag-body"></div>
-  </div>
-
-  <!-- Settings Panel -->
-  <div id="settings-panel" class="diag-panel hidden">
-    <div class="diag-header">
-      <span>NOTIFICATIONS</span>
-      <button id="settings-close" class="px-btn close-btn">✕</button>
+      <span>DETAILS</span>
+      <button id="details-close" class="px-btn close-btn">✕</button>
     </div>
     <div class="diag-body">
+      <!-- Statistics section -->
+      <div class="panel-section-title">STATISTICS</div>
+      <div id="stats-body"></div>
+      <div class="panel-divider" style="margin:8px 0"></div>
+      <!-- Diagnostics section -->
+      <div class="panel-section-title">DIAGNOSTICS</div>
+      <div id="diag-body"></div>
+      <div class="panel-divider" style="margin:8px 0"></div>
+      <!-- Notification settings section -->
+      <div class="panel-section-title">NOTIFICATIONS</div>
       <div class="settings-row">
         <label class="settings-label">Enabled</label>
         <input type="checkbox" id="set-enabled" class="settings-check">
@@ -120,7 +95,18 @@
         <label class="settings-label">Projects</label>
         <input type="text" id="set-projects" class="filter-search" placeholder="keyword1, keyword2...">
       </div>
-      <div style="font-size:6px;color:#666;margin-top:2px">Comma-separated. Empty = all projects.</div>
+      <div style="font-size:10px;color:#666;margin-top:2px">Comma-separated. Empty = all projects.</div>
+    </div>
+  </div>
+
+  <!-- Timeline Overlay -->
+  <div id="timeline-overlay" class="timeline-overlay hidden">
+    <div class="timeline-header">
+      <span id="timeline-title">TIMELINE</span>
+      <button id="timeline-close" class="px-btn close-btn">✕</button>
+    </div>
+    <div class="timeline-body">
+      <canvas id="timeline-canvas"></canvas>
     </div>
   </div>
 

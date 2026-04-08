@@ -40,6 +40,12 @@ export function inputPreview(input: Record<string, unknown> | null | undefined):
   );
 }
 
+const escDiv = document.createElement('div');
+export function esc(s: string): string {
+  escDiv.textContent = s || '';
+  return escDiv.innerHTML;
+}
+
 export function prettyProject(name: string): string {
   return name.replace(/^-Users-[^-]+-/, '~/').replace(/-/g, '/');
 }
@@ -48,4 +54,19 @@ export function fmtSize(bytes: number): string {
   if (bytes < 1024) return bytes + 'B';
   if (bytes < 1048576) return (bytes / 1024).toFixed(1) + 'KB';
   return (bytes / 1048576).toFixed(1) + 'MB';
+}
+
+/** Shared focus-window helper. Returns toast message. */
+export async function focusWindow(session: { pid?: number; project: string }): Promise<string> {
+  if (!session.pid) {
+    throw new Error('Process not running — session may have ended');
+  }
+  const res = await fetch('/api/focus-window', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pid: session.pid }),
+  });
+  const data = await res.json() as { ok: boolean; error?: string; reason?: string };
+  if (data.ok) return `Focused: ${prettyProject(session.project)}`;
+  throw new Error(data.error || data.reason || 'unknown');
 }

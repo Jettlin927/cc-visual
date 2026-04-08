@@ -5,7 +5,7 @@ import { Timeline } from './components/timeline.js';
 import { EventStream } from './components/event-stream.js';
 import { Stats } from './components/stats.js';
 import { FileWatcher } from './utils/sse-client.js';
-import { fmtElapsed, prettyProject, fmtSize } from './utils/formatters.js';
+import { esc, fmtElapsed, prettyProject, fmtSize } from './utils/formatters.js';
 
 // ---- Init decorations ----
 initParticles(document.getElementById('particles') as HTMLCanvasElement);
@@ -34,13 +34,6 @@ const eventStream = new EventStream(
   document.getElementById('event-count')!,
 );
 const stats = new Stats();
-
-// ---- Helpers ----
-function esc(s: string): string {
-  const d = document.createElement('div');
-  d.textContent = s || '';
-  return d.innerHTML;
-}
 
 // ---- Load sessions ----
 async function loadSessions(): Promise<void> {
@@ -144,7 +137,7 @@ function updateAgents(toolCalls: ToolCall[]): void {
   const agents = toolCalls.filter(tc => tc.name === 'Agent');
 
   if (!agents.length) {
-    tree.innerHTML = '<div class="loading-text" style="animation:none;font-size:8px">NO AGENTS YET</div>';
+    tree.innerHTML = '<div class="loading-text" style="animation:none;font-size:11px">NO AGENTS YET</div>';
     return;
   }
 

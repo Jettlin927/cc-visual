@@ -28,17 +28,38 @@ public class WinFocus {
   [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
 }
 "@
-      $p = Get-Process -Id ${pid} -EA SilentlyContinue
-      while ($p -and !$p.MainWindowHandle) {
-        $par = (Get-CimInstance Win32_Process -Filter "ProcessId=$($p.Id)" -EA SilentlyContinue).ParentProcessId
-        if (!$par) { break }
-        $p = Get-Process -Id $par -EA SilentlyContinue
+      # Walk up the process tree collecting all ancestors
+      $cur = Get-Process -Id ${pid} -EA SilentlyContinue
+      $found = $null
+      $terminals = @('WindowsTerminal','cmd','powershell','pwsh','ConEmuC64','ConEmuC','mintty','alacritty','wezterm-gui','Code')
+      for ($i = 0; $i -lt 15 -and $cur; $i++) {
+        # Prefer known terminal hosts with a real window handle
+        if ($cur.MainWindowHandle -ne [IntPtr]::Zero -and $terminals -contains $cur.ProcessName) {
+          $found = $cur
+          break
+        }
+        $parId = (Get-CimInstance Win32_Process -Filter "ProcessId=$($cur.Id)" -EA SilentlyContinue).ParentProcessId
+        if (!$parId) { break }
+        $cur = Get-Process -Id $parId -EA SilentlyContinue
       }
-      if ($p -and $p.MainWindowHandle) {
-        $h = $p.MainWindowHandle
+      # Fallback: walk up again and take the first ancestor with any window handle
+      if (!$found) {
+        $cur = Get-Process -Id ${pid} -EA SilentlyContinue
+        for ($i = 0; $i -lt 15 -and $cur; $i++) {
+          if ($cur.MainWindowHandle -ne [IntPtr]::Zero) {
+            $found = $cur
+            break
+          }
+          $parId = (Get-CimInstance Win32_Process -Filter "ProcessId=$($cur.Id)" -EA SilentlyContinue).ParentProcessId
+          if (!$parId) { break }
+          $cur = Get-Process -Id $parId -EA SilentlyContinue
+        }
+      }
+      if ($found) {
+        $h = $found.MainWindowHandle
         if ([WinFocus]::IsIconic($h)) { [WinFocus]::ShowWindow($h, 9) | Out-Null }
         [WinFocus]::SetForegroundWindow($h) | Out-Null
-        Write-Output "OK:$($p.ProcessName)"
+        Write-Output "OK:$($found.ProcessName)"
       } else { Write-Output "NO_WINDOW" }
     `;
 

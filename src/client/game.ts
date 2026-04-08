@@ -6,6 +6,7 @@ import { showToast, showBadge, notifyWaiting, toggleMute, isMuted, getNotifSetti
 import { renderSessionList } from './sidebar.js';
 import { initPanel, showPanel, hidePanel, renderPanel, fetchHistory } from './panel.js';
 import { initInteraction } from './interaction.js';
+import { focusWindow } from './utils/formatters.js';
 
 // ─── Setup ───────────────────────────────────────────────
 const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
@@ -22,6 +23,7 @@ let lastTime = 0;
 
 // DOM refs
 const activeBadge   = document.getElementById('active-count')!;
+const hudWaiting    = document.getElementById('hud-waiting')!;
 const hudTime       = document.getElementById('hud-time')!;
 const closePanel    = document.getElementById('close-panel')!;
 const sessionListEl = document.getElementById('session-list')!;
@@ -88,6 +90,20 @@ function renderWorld(t: number): void {
     for (let tx = sx; tx < ex; tx++) {
       drawTile(ctx, map[ty][tx], Math.floor(tx * TILE_SIZE - camX), Math.floor(ty * TILE_SIZE - camY), t);
     }
+  }
+}
+
+// ─── Empty State ─────────────────────────────────────────
+let emptyStateEl: HTMLElement | null = null;
+function updateEmptyState(isEmpty: boolean): void {
+  if (isEmpty && !emptyStateEl) {
+    emptyStateEl = document.createElement('div');
+    emptyStateEl.className = 'empty-state';
+    emptyStateEl.innerHTML = '<div class="empty-state-text">Start a Claude Code or Codex session<br>— I\'ll appear here</div>';
+    canvas.parentElement!.appendChild(emptyStateEl);
+  } else if (!isEmpty && emptyStateEl) {
+    emptyStateEl.remove();
+    emptyStateEl = null;
   }
 }
 
@@ -185,6 +201,37 @@ function reconcileSessions(incoming: Session[]): void {
   activeBadge.textContent = `${characters.size} ACTIVE`;
   sidebarCount.textContent = String(characters.size);
 
+  // HUD waiting badge with pulse
+  const waitingCount = incoming.filter(s => s.status === 'waiting').length;
+  if (waitingCount > 0) {
+    hudWaiting.textContent = `⚠ ${waitingCount} waiting`;
+    hudWaiting.classList.add('has-waiting');
+  } else {
+    hudWaiting.textContent = 'All clear';
+    hudWaiting.classList.remove('has-waiting');
+    hudWaiting.style.display = '';
+  }
+
+  // Empty state
+  updateEmptyState(incoming.length === 0);
+
+  // Auto-focus camera on waiting characters (if not manually selecting)
+  if (!selected) {
+    const waitingChars = [...characters.values()].filter(c => c.session.status === 'waiting');
+    if (waitingChars.length > 0) {
+      const avgX = waitingChars.reduce((sum, c) => sum + c.x, 0) / waitingChars.length;
+      const avgY = waitingChars.reduce((sum, c) => sum + c.y, 0) / waitingChars.length;
+      centerOn(avgX, avgY);
+    } else {
+      const active = [...characters.values()];
+      if (active.length > 0) {
+        const avgX = active.reduce((sum, c) => sum + c.x, 0) / active.length;
+        const avgY = active.reduce((sum, c) => sum + c.y, 0) / active.length;
+        centerOn(avgX, avgY);
+      }
+    }
+  }
+
   renderSessionList(sessionListEl, incoming, selected, {
     onSelect: selectSession,
   });
@@ -224,6 +271,19 @@ function clearSelection(): void {
 
 closePanel.addEventListener('click', clearSelection);
 
+// ─── Focus window for waiting sessions ──────────────────
+async function focusWaitingSession(id: string): Promise<void> {
+  const session = sessions.find(s => s.sessionId === id);
+  if (!session) return;
+  try {
+    const pid = 'pid' in session && typeof session.pid === 'number' ? session.pid : undefined;
+    const msg = await focusWindow({ pid, project: session.project });
+    showToast(msg);
+  } catch (err) {
+    showToast(`\u2717 Focus failed: ${err instanceof Error ? err.message : 'network error'}`);
+  }
+}
+
 // ─── Interaction (drag, click, keyboard) ─────────────────
 initInteraction(canvas, {
   clampCam,
@@ -235,6 +295,7 @@ initInteraction(canvas, {
   getSelected: () => selected,
   selectSession,
   clearSelection,
+  focusWaitingSession: (id: string) => void focusWaitingSession(id),
 });
 
 // ─── Panel toggle helper ────────────────────────────────
@@ -250,9 +311,9 @@ function bindPanel(panelId: string, openBtnId: string, closeBtnId: string, onOpe
   closeBtn.addEventListener('click', () => panel.classList.add('hidden'));
 }
 
-// ─── Stats Panel ────────────────────────────────────────
+// ─── Unified Details Panel (stats + diagnostics + settings) ──
 const statsBody  = document.getElementById('stats-body')!;
-const hudTools   = document.getElementById('hud-tools')!;
+const diagBody   = document.getElementById('diag-body')!;
 
 function statsBar(label: string, value: number, max: number, color: string): string {
   const pct = max > 0 ? (value / max * 100) : 0;
@@ -272,74 +333,24 @@ async function refreshStats(): Promise<void> {
     let html = '';
     html += `<div class="diag-row"><span class="diag-label">Sessions</span><span class="diag-value ok">${d.totalSessions} total / ${d.activeSessions} active</span></div>`;
     html += `<div class="diag-row"><span class="diag-label">Tool calls</span><span class="diag-value ok">${d.totalToolCalls}</span></div>`;
-    html += '<div style="margin-top:6px;font-size:7px;color:#666;letter-spacing:1px">SOURCE SPLIT</div>';
+    html += '<div style="margin-top:6px;font-size:10px;color:#666;letter-spacing:1px;font-family:var(--px)">SOURCE SPLIT</div>';
     html += statsBar('Claude', d.claudeCount, total, '#3a3');
     html += statsBar('Codex', d.codexCount, total, '#58a6ff');
 
-    // Tool distribution
     const toolEntries = Object.entries(d.byTool).sort((a, b) => b[1] - a[1]).slice(0, 8);
     if (toolEntries.length > 0) {
       const maxTool = toolEntries[0][1];
-      html += '<div style="margin-top:6px;font-size:7px;color:#666;letter-spacing:1px">TOP TOOLS</div>';
+      html += '<div style="margin-top:6px;font-size:10px;color:#666;letter-spacing:1px;font-family:var(--px)">TOP TOOLS</div>';
       for (const [name, count] of toolEntries) {
         html += statsBar(name, count, maxTool, '#fa0');
       }
     }
 
-    // Project distribution
-    const projEntries = Object.entries(d.byProject).sort((a, b) => b[1].tools - a[1].tools).slice(0, 6);
-    if (projEntries.length > 0) {
-      const maxProj = projEntries[0][1].tools;
-      html += '<div style="margin-top:6px;font-size:7px;color:#666;letter-spacing:1px">PROJECTS</div>';
-      for (const [name, data] of projEntries) {
-        const short = name.split('/').pop() || name;
-        html += statsBar(short, data.tools, maxProj, '#0ff');
-      }
-    }
-
     statsBody.innerHTML = html;
-
-    // Update HUD tool count
-    hudTools.textContent = `${d.totalToolCalls} tools`;
-    hudTools.style.display = d.totalToolCalls > 0 ? '' : 'none';
   } catch {
     statsBody.innerHTML = '<div class="diag-row"><span class="diag-value error">Failed to load stats</span></div>';
   }
 }
-
-bindPanel('stats-panel', 'hud-stats-btn', 'stats-close', () => void refreshStats());
-
-// ─── Mute Button ────────────────────────────────────────
-const muteBtn = document.getElementById('hud-mute-btn')!;
-muteBtn.textContent = isMuted() ? '🔇' : '🔊';
-muteBtn.addEventListener('click', () => {
-  toggleMute();
-  muteBtn.textContent = isMuted() ? '🔇' : '🔊';
-});
-
-// ─── Settings Panel ─────────────────────────────────────
-const setEnabled    = document.getElementById('set-enabled') as HTMLInputElement;
-const setDelay      = document.getElementById('set-delay') as HTMLInputElement;
-const setProjects   = document.getElementById('set-projects') as HTMLInputElement;
-
-function syncSettingsUI(): void {
-  const s = getNotifSettings();
-  setEnabled.checked = s.enabled;
-  setDelay.value = String(s.delayMinutes);
-  setProjects.value = s.projectWhitelist.join(', ');
-}
-
-bindPanel('settings-panel', 'hud-settings-btn', 'settings-close', syncSettingsUI);
-
-setEnabled.addEventListener('change', () => setNotifEnabled(setEnabled.checked));
-setDelay.addEventListener('change', () => setDelayMinutes(Math.max(0, parseInt(setDelay.value, 10) || 0)));
-setProjects.addEventListener('change', () => {
-  const list = setProjects.value.split(',').map(s => s.trim()).filter(Boolean);
-  setProjectWhitelist(list);
-});
-
-// ─── Diagnostic Panel ───────────────────────────────────
-const diagBody  = document.getElementById('diag-body')!;
 
 function diagRow(label: string, value: string, ok: boolean): string {
   return `<div class="diag-row"><span class="diag-label">${label}</span><span class="diag-value ${ok ? 'ok' : 'error'}">${value}</span></div>`;
@@ -368,7 +379,40 @@ async function refreshDiag(): Promise<void> {
   }
 }
 
-bindPanel('diag-panel', 'hud-diag-btn', 'diag-close', () => void refreshDiag());
+function refreshDetailsPanel(): void {
+  void refreshStats();
+  void refreshDiag();
+  syncSettingsUI();
+}
+
+bindPanel('details-panel', 'hud-diag-btn', 'details-close', refreshDetailsPanel);
+
+// ─── Mute Button ────────────────────────────────────────
+const muteBtn = document.getElementById('hud-mute-btn')!;
+muteBtn.textContent = isMuted() ? '🔇' : '🔊';
+muteBtn.addEventListener('click', () => {
+  toggleMute();
+  muteBtn.textContent = isMuted() ? '🔇' : '🔊';
+});
+
+// ─── Notification Settings ──────────────────────────────
+const setEnabled    = document.getElementById('set-enabled') as HTMLInputElement;
+const setDelay      = document.getElementById('set-delay') as HTMLInputElement;
+const setProjects   = document.getElementById('set-projects') as HTMLInputElement;
+
+function syncSettingsUI(): void {
+  const ns = getNotifSettings();
+  setEnabled.checked = ns.enabled;
+  setDelay.value = String(ns.delayMinutes);
+  setProjects.value = ns.projectWhitelist.join(', ');
+}
+
+setEnabled.addEventListener('change', () => setNotifEnabled(setEnabled.checked));
+setDelay.addEventListener('change', () => setDelayMinutes(Math.max(0, parseInt(setDelay.value, 10) || 0)));
+setProjects.addEventListener('change', () => {
+  const list = setProjects.value.split(',').map(s => s.trim()).filter(Boolean);
+  setProjectWhitelist(list);
+});
 
 // ─── Legend ──────────────────────────────────────────────
 document.getElementById('legend-items')!.innerHTML = LEGEND_TOOLS.map(([name, icon, color]) => `

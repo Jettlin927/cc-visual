@@ -2,7 +2,8 @@ import { Direction } from '../shared/types.js';
 import type { Session, ToolCall, TileMap, ToolMeta } from '../shared/types.js';
 import { TILE_SIZE } from '../shared/constants.js';
 import { TOOL_META, TOOL_DEFAULT, getToolPose } from '../shared/tool-metadata.js';
-import { isWalkable, randomWalkableTile } from './world.js';
+import { isWalkable, walkableTileInZone } from './world.js';
+import type { ZoneType } from './world.js';
 import { inputPreview } from './utils/formatters.js';
 import { prettyProject } from './utils/formatters.js';
 
@@ -73,6 +74,9 @@ export class Character {
   // Tool action animation
   actionTime: number;
 
+  // Status tracking for zone transitions
+  private _lastStatus: string;
+
   displayLabel: string;
 
   private rng: () => number;
@@ -91,12 +95,14 @@ export class Character {
     this.hairColor  = hsl(this.rng() * 60, 30 + this.rng() * 40, 20 + this.rng() * 30);
     this.hatType    = Math.floor(this.rng() * 4);
 
-    // Position
-    const spawn = randomWalkableTile(map, () => this.rng());
+    // Position — spawn in zone matching initial status
+    const zone = Character._statusZone(session.status);
+    const spawn = walkableTileInZone(map, () => this.rng(), zone);
     this.x  = spawn.tx * TILE_SIZE + TILE_SIZE / 2;
     this.y  = spawn.ty * TILE_SIZE + TILE_SIZE / 2;
     this.tx = spawn.tx;
     this.ty = spawn.ty;
+    this._lastStatus = session.status;
 
     // Pathfinding
     this.targetX = this.x;
@@ -128,10 +134,27 @@ export class Character {
     this.pickNewTarget();
   }
 
+  private static _statusZone(status: string): ZoneType {
+    if (status === 'waiting') return 'center';
+    if (status === 'running') return 'middle';
+    return 'edge';
+  }
+
   pickNewTarget(): void {
     const status = this.session.status;
-    if (status === 'waiting' || status === 'idle') return;
-    const dest = randomWalkableTile(this.map, () => this.rng());
+    if (status === 'waiting') return; // waiting chars stay put in center
+    const zone = Character._statusZone(status);
+    const dest = walkableTileInZone(this.map, () => this.rng(), zone);
+    this.targetX = dest.tx * TILE_SIZE + TILE_SIZE / 2;
+    this.targetY = dest.ty * TILE_SIZE + TILE_SIZE / 2;
+    this.path = null;
+    this.moving = true;
+    this.idleTime = 0;
+  }
+
+  /** Move character to a new zone when status changes */
+  private _moveToZone(zone: ZoneType): void {
+    const dest = walkableTileInZone(this.map, () => this.rng(), zone);
     this.targetX = dest.tx * TILE_SIZE + TILE_SIZE / 2;
     this.targetY = dest.ty * TILE_SIZE + TILE_SIZE / 2;
     this.path = null;
@@ -144,9 +167,8 @@ export class Character {
     this.actionTime += dt;
 
     const status = this.session.status;
-    if (status === 'waiting' || status === 'idle') {
-      this.moving = false;
-    }
+    // Waiting characters stop once they reach their zone target
+    // (but they can still be mid-movement to their zone)
 
     if (this.moving) {
       const dx = this.targetX - this.x;
@@ -216,10 +238,16 @@ export class Character {
   updateSession(session: Session): void {
     const oldTool = this.currentTool?.name;
     const projectChanged = session.project !== this.session.project;
+    const oldStatus = this._lastStatus;
     this.session = session;
     this.currentTool = session.lastTool || null;
     if (projectChanged) this.displayLabel = this._computeLabel();
-    if (this.currentTool?.name !== oldTool && this.currentTool?.status === 'running') {
+
+    // Status changed → move to new zone
+    if (session.status !== oldStatus) {
+      this._lastStatus = session.status;
+      this._moveToZone(Character._statusZone(session.status));
+    } else if (this.currentTool?.name !== oldTool && this.currentTool?.status === 'running') {
       this.actionTime = 0;
       if (!this.moving) this.pickNewTarget();
     }
@@ -236,6 +264,11 @@ export class Character {
 
     const sc = Character.SPRITE_SCALE;
     ctx.save();
+
+    // Idle characters are semi-transparent
+    if (this.session.status === 'idle') {
+      ctx.globalAlpha = 0.4;
+    }
 
     if (this.selected) {
       ctx.shadowBlur = 12;
@@ -426,12 +459,12 @@ export class Character {
   private static readonly EDIT_TOOLS = new Set(['Edit', 'Write']);
 
   private _getPhaseTag(): { text: string; color: string } {
-    if (this.session.status === 'waiting') return { text: '等你确认', color: '#fa0' };
+    if (this.session.status === 'waiting') return { text: 'Needs you', color: '#fa0' };
     const name = this.currentTool?.name ?? '';
-    if (Character.SEARCH_TOOLS.has(name)) return { text: '搜索中', color: '#0ff' };
-    if (Character.EDIT_TOOLS.has(name)) return { text: '编辑中', color: '#0f0' };
-    if (name === 'Bash') return { text: '执行命令', color: '#f0f' };
-    return { text: '工作中', color: '#888' };
+    if (Character.SEARCH_TOOLS.has(name)) return { text: 'Searching', color: '#0ff' };
+    if (Character.EDIT_TOOLS.has(name)) return { text: 'Editing', color: '#0f0' };
+    if (name === 'Bash') return { text: 'Running cmd', color: '#f0f' };
+    return { text: 'Working', color: '#888' };
   }
 
   private _drawNameTag(ctx: CanvasRenderingContext2D, sx: number, sy: number): void {

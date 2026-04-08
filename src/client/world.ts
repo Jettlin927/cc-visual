@@ -260,3 +260,44 @@ export function randomWalkableTile(map: TileMap, rng: () => number): { tx: numbe
   } while (!isWalkable(map, tx, ty) && tries < 100);
   return { tx, ty };
 }
+
+/**
+ * Find a walkable tile within a rectangular zone.
+ * Zone is defined by center ratios (0-1) and radius ratios (0-1).
+ */
+export type ZoneType = 'center' | 'middle' | 'edge';
+
+const ZONES: Record<ZoneType, { x1: number; y1: number; x2: number; y2: number }> = {
+  center: { x1: 0.35, y1: 0.30, x2: 0.65, y2: 0.70 },
+  middle: { x1: 0.15, y1: 0.15, x2: 0.85, y2: 0.85 },
+  edge:   { x1: 0.0,  y1: 0.0,  x2: 1.0,  y2: 1.0  },
+};
+
+export function walkableTileInZone(
+  map: TileMap, rng: () => number, zone: ZoneType, _depth = 0
+): { tx: number; ty: number } {
+  const z = ZONES[zone];
+  const x1 = Math.floor(z.x1 * MAP_W);
+  const y1 = Math.floor(z.y1 * MAP_H);
+  const x2 = Math.ceil(z.x2 * MAP_W);
+  const y2 = Math.ceil(z.y2 * MAP_H);
+
+  let tx: number, ty: number, tries = 0;
+  do {
+    tx = x1 + Math.floor(rng() * (x2 - x1));
+    ty = y1 + Math.floor(rng() * (y2 - y1));
+    tries++;
+  } while (!isWalkable(map, tx, ty) && tries < 100);
+
+  // For edge zone, prefer tiles actually near the edge (reject center)
+  if (zone === 'edge' && tries < 100 && _depth < 5) {
+    const cx = MAP_W / 2, cy = MAP_H / 2;
+    const dx = Math.abs(tx - cx) / cx;
+    const dy = Math.abs(ty - cy) / cy;
+    if (dx < 0.4 && dy < 0.4) {
+      return walkableTileInZone(map, rng, zone, _depth + 1);
+    }
+  }
+
+  return { tx, ty };
+}

@@ -247,9 +247,10 @@ export function createRouter(config: AppConfig): Router {
 
   // Focus terminal window by PID
   router.post('/api/focus-window', express.json(), async (req, res) => {
-    const { pid } = req.body as { pid?: number };
-    if (!pid) {
-      res.status(400).json({ error: 'Missing pid' });
+    const rawPid = (req.body as { pid?: string | number }).pid;
+    const pid = typeof rawPid === 'string' ? parseInt(rawPid, 10) : rawPid;
+    if (!pid || isNaN(pid)) {
+      res.status(400).json({ ok: false, error: 'Missing pid — session process may have ended' });
       return;
     }
     const result = await focusWindow(pid);
