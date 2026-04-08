@@ -137,7 +137,28 @@ export function createRouter(config: AppConfig): Router {
         })
         .filter((e): e is JournalEntry => e !== null);
       const toolCalls = parseToolCalls(entries);
-      res.json({ totalLines: lines.length, toolCalls });
+
+      // Extract last assistant text (S5)
+      let lastAssistantText: string | null = null;
+      for (let i = entries.length - 1; i >= 0; i--) {
+        if (entries[i].type === 'assistant') {
+          const blocks = entries[i].message?.content || [];
+          for (const b of blocks) {
+            if (b.type === 'text' && b.text) {
+              lastAssistantText = b.text.slice(0, 200);
+              break;
+            }
+          }
+          if (lastAssistantText !== null) break;
+        }
+      }
+
+      // Extract recent errors (S5)
+      const recentErrors = toolCalls
+        .filter(tc => tc.status === 'error')
+        .slice(-3);
+
+      res.json({ totalLines: lines.length, toolCalls, lastAssistantText, recentErrors });
     } catch (err) {
       res.status(500).json({ error: (err as Error).message });
     }

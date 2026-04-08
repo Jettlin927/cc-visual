@@ -360,6 +360,30 @@ body {
   min-height: 40px;
 }
 
+/* ─── PANEL REPLY & ERRORS ─── */
+.panel-reply {
+  font-size: 7px;
+  color: var(--muted);
+  line-height: 1.6;
+  word-break: break-word;
+  min-height: 16px;
+}
+
+.panel-errors {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.panel-error-item {
+  font-size: 7px;
+  padding: 4px 6px;
+  background: rgba(244,68,68,0.08);
+  border-left: 2px solid var(--red);
+  color: var(--red);
+  word-break: break-word;
+}
+
 .panel-history    { display: flex; flex-direction: column; gap: 4px; }
 
 .ph-item {

@@ -163,4 +163,6 @@ export interface FocusWindowResponse {
 export interface TranscriptResponse {
   totalLines: number;
   toolCalls: ToolCall[];
+  lastAssistantText: string | null;
+  recentErrors: ToolCall[];
 }

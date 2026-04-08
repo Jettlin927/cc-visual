@@ -10,6 +10,9 @@ let panelAvatar: HTMLElement;
 let panelSession: HTMLElement;
 let panelProject: HTMLElement;
 let panelTool: HTMLElement;
+let panelReply: HTMLElement;
+let panelErrorsTitle: HTMLElement;
+let panelErrors: HTMLElement;
 let panelHistory: HTMLElement;
 let sidePanel: HTMLElement;
 
@@ -18,6 +21,9 @@ export function initPanel(): void {
   panelSession = document.getElementById('panel-session')!;
   panelProject = document.getElementById('panel-project')!;
   panelTool    = document.getElementById('panel-tool')!;
+  panelReply   = document.getElementById('panel-reply')!;
+  panelErrorsTitle = document.getElementById('panel-errors-title')!;
+  panelErrors  = document.getElementById('panel-errors')!;
   panelHistory = document.getElementById('panel-history')!;
   sidePanel    = document.getElementById('side-panel')!;
 }
@@ -74,17 +80,52 @@ export function renderPanel(ch: Character, s: Session): void {
 }
 
 export async function fetchHistory(ch: Character): Promise<void> {
+  // Reset reply and errors
+  panelReply.textContent = '';
+  panelErrorsTitle.style.display = 'none';
+  panelErrors.innerHTML = '';
+
   try {
     let toolCalls: ToolCall[];
+    let lastAssistantText: string | null = null;
+    let recentErrors: ToolCall[] = [];
+
     if (ch.session.source === 'codex') {
       const r = await fetch(`/api/codex-history?threadId=${encodeURIComponent(ch.session.sessionId)}`);
       const d = await r.json();
       toolCalls = ((d.toolCalls || []) as ToolCall[]).slice(-HISTORY_ITEMS).reverse();
+      // Codex doesn't have lastAssistantText yet — extract errors from tool calls
+      recentErrors = toolCalls.filter(tc => tc.status === 'error').slice(0, 3);
     } else {
       const r = await fetch(`/api/transcript?path=${encodeURIComponent(ch.session.filePath)}`);
       const d = await r.json();
       toolCalls = ((d.toolCalls || []) as ToolCall[]).slice(-HISTORY_ITEMS).reverse();
+      lastAssistantText = (d.lastAssistantText as string | null) ?? null;
+      recentErrors = ((d.recentErrors || []) as ToolCall[]);
     }
+
+    // Render last reply
+    if (lastAssistantText) {
+      const truncated = lastAssistantText.length >= 200
+        ? lastAssistantText + '...'
+        : lastAssistantText;
+      panelReply.textContent = truncated;
+    } else {
+      panelReply.textContent = 'No reply yet';
+    }
+
+    // Render errors
+    if (recentErrors.length > 0) {
+      panelErrorsTitle.style.display = '';
+      panelErrors.innerHTML = recentErrors.map((tc: ToolCall) => {
+        const meta: ToolMeta = TOOL_META[tc.name] || TOOL_DEFAULT;
+        return `<div class="panel-error-item">${meta.icon} ${esc(tc.name)} — ERROR</div>`;
+      }).join('');
+    } else {
+      panelErrorsTitle.style.display = 'none';
+    }
+
+    // Render history
     panelHistory.innerHTML = toolCalls.map((tc: ToolCall) => {
       const meta: ToolMeta = TOOL_META[tc.name] || TOOL_DEFAULT;
       return `<div class="ph-item ${tc.status}" style="border-color:${meta.color}">
