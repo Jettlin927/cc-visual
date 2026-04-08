@@ -1,6 +1,9 @@
 import { Router } from 'express';
+import { existsSync } from 'fs';
 import { watch } from 'fs';
-import { readFile as readFileAsync, stat as statAsync } from 'fs/promises';
+import { readdir, readFile as readFileAsync, stat as statAsync } from 'fs/promises';
+import { join } from 'path';
+import { DatabaseSync } from 'node:sqlite';
 
 import type { AppConfig, ClaudeSession, JournalEntry, Session } from '../shared/types.js';
 import { SSE_FILE_POLL_MS, SSE_ACTIVE_POLL_MS } from '../shared/constants.js';
@@ -33,6 +36,65 @@ async function getActiveSessions(config: AppConfig): Promise<Session[]> {
  */
 export function createRouter(config: AppConfig): Router {
   const router = Router();
+
+  // Track SSE client count and last scan time
+  let sseClients = 0;
+  let lastScanAt: string | null = null;
+
+  // Health check
+  router.get('/api/health', async (_req, res) => {
+    try {
+      // Claude dir
+      const claudeDirExists = existsSync(config.claudeDir);
+      let scannedFiles = 0;
+      if (claudeDirExists) {
+        try {
+          const projectsDir = join(config.claudeDir, 'projects');
+          const entries = await readdir(projectsDir, { withFileTypes: true });
+          for (const entry of entries) {
+            if (!entry.isDirectory()) continue;
+            const files = await readdir(join(projectsDir, entry.name));
+            scannedFiles += files.filter(f => f.endsWith('.jsonl')).length;
+          }
+        } catch { /* projects dir may not exist */ }
+      }
+
+      // Codex dir
+      const codexDirExists = existsSync(config.codexDir);
+      let codexSqliteReadable = false;
+      if (codexDirExists) {
+        try {
+          const db = new DatabaseSync(
+            join(config.codexDir, 'state_5.sqlite'),
+            { readOnly: true } as Record<string, unknown>,
+          );
+          db.close();
+          codexSqliteReadable = true;
+        } catch { /* not readable */ }
+      }
+
+      // Active sessions for filtered count
+      const sessions = await getActiveSessions(config);
+      const now = Date.now();
+      const filteredSessions = sessions.filter(
+        s => s.status === 'idle' || now - s.modifiedAt > config.activeThresholdMs,
+      ).length;
+
+      lastScanAt = new Date().toISOString();
+
+      res.json({
+        claudeDir: { path: config.claudeDir, exists: claudeDirExists },
+        codexDir: { path: config.codexDir, exists: codexDirExists },
+        codexSqlite: { readable: codexSqliteReadable },
+        lastScanAt,
+        scannedFiles,
+        filteredSessions,
+        sseClients,
+      });
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
 
   // All projects/sessions
   router.get('/api/projects', async (_req, res) => {
@@ -118,6 +180,7 @@ export function createRouter(config: AppConfig): Router {
 
   // SSE: watch ALL active sessions (for game world)
   router.get('/api/watch-active', (req, res) => {
+    sseClients++;
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
@@ -128,6 +191,7 @@ export function createRouter(config: AppConfig): Router {
     const send = async (): Promise<void> => {
       try {
         const sessions = await getActiveSessions(config);
+        lastScanAt = new Date().toISOString();
         res.write(`data: ${JSON.stringify({ type: 'update', sessions })}\n\n`);
       } catch {
         // swallow errors in SSE loop
@@ -136,7 +200,10 @@ export function createRouter(config: AppConfig): Router {
 
     void send();
     const iv = setInterval(() => void send(), SSE_ACTIVE_POLL_MS);
-    req.on('close', () => clearInterval(iv));
+    req.on('close', () => {
+      sseClients--;
+      clearInterval(iv);
+    });
   });
 
   // Codex tool history for detail panel

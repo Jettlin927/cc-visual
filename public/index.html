@@ -17,6 +17,7 @@
       <span id="hud-waiting" class="hud-badge hud-waiting" style="display:none">⚠ 0 waiting</span>
     </div>
     <div class="hud-right">
+      <button id="hud-diag-btn" class="hud-icon-btn" title="Diagnostics">⚙</button>
       <span id="hud-time" class="hud-time"></span>
     </div>
   </div>
@@ -57,6 +58,18 @@
     <div class="panel-section-title">RECENT CALLS</div>
     <div id="panel-history" class="panel-history"></div>
   </div>
+
+  <!-- Diagnostic Panel -->
+  <div id="diag-panel" class="diag-panel hidden">
+    <div class="diag-header">
+      <span>DIAGNOSTICS</span>
+      <button id="diag-close" class="px-btn close-btn">✕</button>
+    </div>
+    <div id="diag-body" class="diag-body"></div>
+  </div>
+
+  <!-- SSE status overlay -->
+  <div id="sse-status" class="sse-status hidden"></div>
 
   <!-- Legend bottom left -->
   <div id="legend">

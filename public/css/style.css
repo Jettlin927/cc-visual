@@ -532,3 +532,92 @@ body {
 .sess-item.seen:hover {
   opacity: 0.7;
 }
+
+/* ─── HUD ICON BUTTON ─── */
+.hud-icon-btn {
+  font-family: var(--px);
+  font-size: 12px;
+  background: transparent;
+  color: var(--muted);
+  border: none;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+.hud-icon-btn:hover {
+  color: var(--cyan);
+}
+
+/* ─── DIAGNOSTIC PANEL ─── */
+.diag-panel {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 320px;
+  max-height: 80vh;
+  background: var(--panel-bg);
+  border: 3px solid var(--border);
+  z-index: 200;
+  overflow-y: auto;
+}
+.diag-panel.hidden { display: none; }
+
+.diag-header {
+  padding: 10px 12px;
+  background: rgba(233,69,96,0.12);
+  border-bottom: 2px solid rgba(233,69,96,0.4);
+  font-size: 9px;
+  color: var(--orange);
+  letter-spacing: 1px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.diag-header .close-btn {
+  position: static;
+  font-size: 8px;
+  width: 20px;
+  height: 20px;
+}
+
+.diag-body {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.diag-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 7px;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+.diag-label { color: var(--muted); }
+.diag-value { color: var(--text); }
+.diag-value.ok { color: var(--green); }
+.diag-value.error { color: var(--red); }
+
+/* ─── SSE STATUS OVERLAY ─── */
+.sse-status {
+  position: fixed;
+  top: var(--hud-h);
+  left: 0;
+  right: 0;
+  padding: 4px 16px;
+  font-family: var(--px);
+  font-size: 7px;
+  text-align: center;
+  z-index: 150;
+  animation: blink 1.5s steps(2) infinite;
+}
+.sse-status.hidden { display: none; }
+.sse-status.disconnected {
+  background: rgba(244,68,68,0.15);
+  color: var(--red);
+  border-bottom: 1px solid var(--red);
+}

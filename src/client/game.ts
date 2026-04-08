@@ -112,14 +112,47 @@ function gameLoop(ts: number): void {
 }
 requestAnimationFrame((ts) => { lastTime = ts; gameLoop(ts); });
 
-// ─── SSE: Active Sessions ────────────────────────────────
-const evtSrc = new EventSource('/api/watch-active');
-evtSrc.onmessage = (e: MessageEvent) => {
-  try {
-    const data: SSEMessage = JSON.parse(e.data);
-    if (data.type === 'update') reconcileSessions((data.sessions || []) as Session[]);
-  } catch { /* ignore parse errors */ }
-};
+// ─── SSE: Active Sessions (with reconnection) ──────────
+const sseStatusEl = document.getElementById('sse-status')!;
+let sseRetries = 0;
+const MAX_SSE_RETRIES = 5;
+
+function connectSSE(): EventSource {
+  const src = new EventSource('/api/watch-active');
+
+  src.onopen = () => {
+    if (sseRetries > 0) {
+      showToast('✅ Connection restored');
+      sseStatusEl.classList.add('hidden');
+    }
+    sseRetries = 0;
+  };
+
+  src.onmessage = (e: MessageEvent) => {
+    try {
+      const data: SSEMessage = JSON.parse(e.data);
+      if (data.type === 'update') reconcileSessions((data.sessions || []) as Session[]);
+    } catch { /* ignore parse errors */ }
+  };
+
+  src.onerror = () => {
+    src.close();
+    sseRetries++;
+    if (sseRetries <= MAX_SSE_RETRIES) {
+      sseStatusEl.textContent = `⚠ Disconnected — reconnecting (${sseRetries}/${MAX_SSE_RETRIES})...`;
+      sseStatusEl.className = 'sse-status disconnected';
+      const delay = Math.min(2000 * sseRetries, 10000);
+      setTimeout(() => connectSSE(), delay);
+    } else {
+      sseStatusEl.textContent = '✕ Connection failed — please check the server';
+      sseStatusEl.className = 'sse-status disconnected';
+    }
+  };
+
+  return src;
+}
+
+connectSSE();
 
 function reconcileSessions(incoming: Session[]): void {
   const ids = new Set(incoming.map(s => s.sessionId));
@@ -201,6 +234,59 @@ initInteraction(canvas, {
   getSelected: () => selected,
   selectSession,
   clearSelection,
+});
+
+// ─── Diagnostic Panel ───────────────────────────────────
+interface HealthResponse {
+  claudeDir: { path: string; exists: boolean };
+  codexDir: { path: string; exists: boolean };
+  codexSqlite: { readable: boolean };
+  lastScanAt: string | null;
+  scannedFiles: number;
+  filteredSessions: number;
+  sseClients: number;
+}
+
+const diagPanel = document.getElementById('diag-panel')!;
+const diagBody  = document.getElementById('diag-body')!;
+const diagBtn   = document.getElementById('hud-diag-btn')!;
+const diagClose = document.getElementById('diag-close')!;
+
+function diagRow(label: string, value: string, ok: boolean): string {
+  return `<div class="diag-row"><span class="diag-label">${label}</span><span class="diag-value ${ok ? 'ok' : 'error'}">${value}</span></div>`;
+}
+
+async function refreshDiag(): Promise<void> {
+  try {
+    const res = await fetch('/api/health');
+    const d: HealthResponse = await res.json();
+    const sseOk = sseRetries === 0;
+    const scanAgo = d.lastScanAt
+      ? Math.floor((Date.now() - new Date(d.lastScanAt).getTime()) / 1000) + 's ago'
+      : '—';
+
+    diagBody.innerHTML = [
+      diagRow('Claude data dir', d.claudeDir.exists ? 'EXISTS' : 'MISSING', d.claudeDir.exists),
+      diagRow('Codex data dir', d.codexDir.exists ? 'EXISTS' : 'MISSING', d.codexDir.exists),
+      diagRow('Codex SQLite', d.codexSqlite.readable ? 'OK' : 'ERROR', d.codexSqlite.readable),
+      diagRow('Last scan', scanAgo, true),
+      diagRow('SSE connection', sseOk ? 'CONNECTED' : 'DISCONNECTED', sseOk),
+      diagRow('Scanned JSONL files', String(d.scannedFiles), true),
+      diagRow('Filtered sessions', String(d.filteredSessions), true),
+    ].join('');
+  } catch {
+    diagBody.innerHTML = diagRow('Health API', 'UNREACHABLE', false);
+  }
+}
+
+diagBtn.addEventListener('click', () => {
+  const isHidden = diagPanel.classList.contains('hidden');
+  diagPanel.classList.toggle('hidden');
+  if (isHidden) void refreshDiag();
+});
+
+diagClose.addEventListener('click', () => {
+  diagPanel.classList.add('hidden');
 });
 
 // ─── Legend ──────────────────────────────────────────────
