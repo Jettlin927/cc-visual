@@ -1,3 +1,4 @@
+import type { ToolCall } from '../shared/types.js';
 import { initParticles } from './components/particles.js';
 import { drawLogo } from './components/pixel-logo.js';
 import { Timeline } from './components/timeline.js';
@@ -7,39 +8,52 @@ import { FileWatcher } from './utils/sse-client.js';
 import { fmtElapsed, prettyProject, fmtSize } from './utils/formatters.js';
 
 // ---- Init decorations ----
-initParticles(document.getElementById('particles'));
-drawLogo(document.getElementById('logo-canvas'));
+initParticles(document.getElementById('particles') as HTMLCanvasElement);
+drawLogo(document.getElementById('logo-canvas') as HTMLCanvasElement);
 
 // ---- State ----
-let currentFile = null;
-let watcher = null;
+let currentFile: string | null = null;
+let watcher: FileWatcher | null = null;
 let lastLineCount = 0;
-let sessionStartTime = null;
-let timerInterval = null;
+let sessionStartTime: number | null = null;
+let timerInterval: ReturnType<typeof setInterval> | null = null;
 
 // ---- Elements ----
-const sessionPicker = document.getElementById('session-picker');
-const sessionList = document.getElementById('session-list');
-const dashboard = document.getElementById('dashboard');
-const sessionLabel = document.getElementById('session-label');
-const statusBadge = document.getElementById('status-indicator');
-const timerEl = document.getElementById('timer');
-const refreshBtn = document.getElementById('refresh-btn');
+const sessionPicker = document.getElementById('session-picker')!;
+const sessionList = document.getElementById('session-list')!;
+const dashboard = document.getElementById('dashboard')!;
+const sessionLabel = document.getElementById('session-label')!;
+const statusBadge = document.getElementById('status-indicator')!;
+const timerEl = document.getElementById('timer')!;
+const refreshBtn = document.getElementById('refresh-btn')!;
 
 // ---- Components ----
-const timeline = new Timeline(document.getElementById('timeline-canvas'));
+const timeline = new Timeline(document.getElementById('timeline-canvas') as HTMLCanvasElement);
 const eventStream = new EventStream(
-  document.getElementById('event-list'),
-  document.getElementById('event-count')
+  document.getElementById('event-list')!,
+  document.getElementById('event-count')!,
 );
 const stats = new Stats();
 
+// ---- Helpers ----
+function esc(s: string): string {
+  const d = document.createElement('div');
+  d.textContent = s || '';
+  return d.innerHTML;
+}
+
 // ---- Load sessions ----
-async function loadSessions() {
+async function loadSessions(): Promise<void> {
   sessionList.innerHTML = '<div class="loading-text">LOADING...</div>';
   try {
     const res = await fetch('/api/projects');
-    const projects = await res.json();
+    const projects: Array<{
+      sessionId: string;
+      project: string;
+      filePath: string;
+      modifiedAt: number;
+      size: number;
+    }> = await res.json();
 
     if (!projects.length) {
       sessionList.innerHTML = '<div class="loading-text">NO SESSIONS FOUND</div>';
@@ -65,12 +79,18 @@ async function loadSessions() {
       sessionList.appendChild(item);
     }
   } catch (err) {
-    sessionList.innerHTML = `<div class="loading-text">ERROR: ${err.message}</div>`;
+    sessionList.innerHTML = `<div class="loading-text">ERROR: ${(err as Error).message}</div>`;
   }
 }
 
 // ---- Select & watch a session ----
-async function selectSession(project) {
+interface ProjectInfo {
+  filePath: string;
+  project: string;
+  sessionId: string;
+}
+
+async function selectSession(project: ProjectInfo): Promise<void> {
   currentFile = project.filePath;
   lastLineCount = 0;
 
@@ -84,13 +104,11 @@ async function selectSession(project) {
   sessionStartTime = Date.now();
   if (timerInterval) clearInterval(timerInterval);
   timerInterval = setInterval(() => {
-    timerEl.textContent = fmtElapsed(sessionStartTime);
+    timerEl.textContent = fmtElapsed(sessionStartTime!);
   }, 1000);
 
-  // Initial load
   await fetchTranscript();
 
-  // Watch for changes
   if (watcher) watcher.stop();
   watcher = new FileWatcher(currentFile);
   watcher.onChange = () => fetchTranscript();
@@ -98,34 +116,31 @@ async function selectSession(project) {
 }
 
 // ---- Fetch & parse transcript ----
-async function fetchTranscript() {
+async function fetchTranscript(): Promise<void> {
   if (!currentFile) return;
 
   try {
     const res = await fetch(`/api/transcript?path=${encodeURIComponent(currentFile)}&offset=0`);
-    const data = await res.json();
+    const data: { totalLines: number; toolCalls: ToolCall[] } = await res.json();
 
     if (data.totalLines === lastLineCount) return;
     lastLineCount = data.totalLines;
 
     const toolCalls = data.toolCalls || [];
 
-    // Update all components
     timeline.setData(toolCalls);
     eventStream.setData(toolCalls);
     stats.update(toolCalls);
 
-    // Update agents
     updateAgents(toolCalls);
-
   } catch (err) {
     console.error('Fetch error:', err);
   }
 }
 
 // ---- Agents ----
-function updateAgents(toolCalls) {
-  const tree = document.getElementById('agent-tree');
+function updateAgents(toolCalls: ToolCall[]): void {
+  const tree = document.getElementById('agent-tree')!;
   const agents = toolCalls.filter(tc => tc.name === 'Agent');
 
   if (!agents.length) {
@@ -137,19 +152,14 @@ function updateAgents(toolCalls) {
   for (const a of agents) {
     const chip = document.createElement('div');
     chip.className = `agent-chip ${a.status === 'done' ? 'done' : ''}`;
-    const desc = a.input?.description || a.input?.subagent_type || 'agent';
+    const input = a.input as Record<string, unknown> | undefined;
+    const desc = (input?.description as string) || (input?.subagent_type as string) || 'agent';
     chip.innerHTML = `
       <span class="agent-dot"></span>
       ${esc(desc)}
     `;
     tree.appendChild(chip);
   }
-}
-
-function esc(s) {
-  const d = document.createElement('div');
-  d.textContent = s || '';
-  return d.innerHTML;
 }
 
 // ---- Refresh button ----
@@ -162,7 +172,7 @@ refreshBtn.addEventListener('click', () => {
 });
 
 // ---- Back to session picker on logo click ----
-document.querySelector('.header-left').addEventListener('click', () => {
+document.querySelector('.header-left')!.addEventListener('click', () => {
   if (watcher) watcher.stop();
   dashboard.classList.add('hidden');
   sessionPicker.style.display = '';

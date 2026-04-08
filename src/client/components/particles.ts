@@ -1,18 +1,28 @@
-// Floating pixel particles background
-export function initParticles(canvas) {
-  const ctx = canvas.getContext('2d');
-  const dpr = window.devicePixelRatio || 1;
-  let particles = [];
-  const COLORS = ['#e94560', '#533483', '#0f3460', '#0ff', '#f0f', '#0f0'];
-  const COUNT = 40;
+interface Particle {
+  x: number;
+  y: number;
+  size: number;
+  speedX: number;
+  speedY: number;
+  color: string;
+  alpha: number;
+}
 
-  function resize() {
+const COLORS = ['#e94560', '#533483', '#0f3460', '#0ff', '#f0f', '#0f0'];
+const COUNT = 40;
+
+export function initParticles(canvas: HTMLCanvasElement): void {
+  const ctx = canvas.getContext('2d')!;
+  const dpr = window.devicePixelRatio || 1;
+  let particles: Particle[] = [];
+
+  function resize(): void {
     canvas.width = window.innerWidth * dpr;
     canvas.height = window.innerHeight * dpr;
     ctx.scale(dpr, dpr);
   }
 
-  function spawn() {
+  function spawn(): void {
     particles = [];
     for (let i = 0; i < COUNT; i++) {
       particles.push({
@@ -27,7 +37,7 @@ export function initParticles(canvas) {
     }
   }
 
-  function draw() {
+  function draw(): void {
     ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
     for (const p of particles) {
       p.x += p.speedX;
@@ -38,7 +48,6 @@ export function initParticles(canvas) {
 
       ctx.globalAlpha = p.alpha;
       ctx.fillStyle = p.color;
-      // Draw as a square (pixel art style)
       ctx.fillRect(Math.floor(p.x), Math.floor(p.y), p.size, p.size);
     }
     ctx.globalAlpha = 1;

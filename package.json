@@ -4,13 +4,29 @@
   "description": "Pixel-art real-time visualization dashboard for Claude Code and Codex sessions",
   "type": "module",
   "scripts": {
-    "start": "node --disable-warning=ExperimentalWarning server.js",
-    "prestart": "test -d node_modules || npm install --silent"
+    "start:legacy": "node --disable-warning=ExperimentalWarning server.js",
+    "prestart:legacy": "test -d node_modules || npm install --silent",
+    "dev": "tsx watch --clear-screen=false src/server/index.ts",
+    "start": "npm run build:client && tsx src/server/index.ts",
+    "build:client": "node build.mjs",
+    "build": "npm run build:client",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit -p tsconfig.server.json && tsc --noEmit -p tsconfig.client.json"
   },
   "dependencies": {
     "express": "^4.21.0"
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.5.2",
+    "@typescript-eslint/eslint-plugin": "^8.58.1",
+    "@typescript-eslint/parser": "^8.58.1",
+    "esbuild": "^0.28.0",
+    "eslint": "^10.2.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2"
   }
 }

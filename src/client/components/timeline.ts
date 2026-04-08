@@ -1,3 +1,4 @@
+import type { ToolCall } from '../../shared/types.js';
 import { getToolColor, fmtDuration } from '../utils/formatters.js';
 
 const ROW_H = 24;
@@ -6,18 +7,23 @@ const LABEL_W = 70;
 const PAD = 12;
 
 export class Timeline {
-  constructor(canvas) {
+  private canvas: HTMLCanvasElement;
+  private ctx: CanvasRenderingContext2D;
+  private items: ToolCall[] = [];
+  private t0: number | null = null;
+  private W: number = 0;
+  private H: number = 0;
+
+  constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
-    this.ctx = canvas.getContext('2d');
-    this.items = [];
-    this.t0 = null;
+    this.ctx = canvas.getContext('2d')!;
     this.resize();
     window.addEventListener('resize', () => this.resize());
     this._loop();
   }
 
-  resize() {
-    const w = this.canvas.parentElement;
+  resize(): void {
+    const w = this.canvas.parentElement!;
     const dpr = window.devicePixelRatio || 1;
     this.canvas.width = w.clientWidth * dpr;
     this.canvas.height = w.clientHeight * dpr;
@@ -26,13 +32,13 @@ export class Timeline {
     this.H = w.clientHeight;
   }
 
-  setData(toolCalls) {
+  setData(toolCalls: ToolCall[]): void {
     if (!toolCalls.length) return;
     this.items = toolCalls;
     this.t0 = new Date(toolCalls[0].timestamp).getTime();
   }
 
-  _loop() {
+  private _loop(): void {
     requestAnimationFrame(() => this._loop());
     const { ctx, W, H, items, t0 } = this;
     ctx.clearRect(0, 0, W, H);
@@ -47,7 +53,9 @@ export class Timeline {
 
     const now = Date.now();
     const lastEnd = items.reduce((m, i) => {
-      const e = i.result ? new Date(i.result.timestamp).getTime() : now;
+      const e = i.duration != null
+        ? new Date(i.timestamp).getTime() + i.duration
+        : now;
       return Math.max(m, e);
     }, t0);
     const totalMs = Math.max(lastEnd - t0, 1000);
@@ -59,11 +67,13 @@ export class Timeline {
     visible.forEach((item, i) => {
       const y = PAD + i * (ROW_H + GAP);
       const start = new Date(item.timestamp).getTime() - t0;
-      const end = item.result ? new Date(item.result.timestamp).getTime() - t0 : now - t0;
+      const end = item.duration != null
+        ? start + item.duration
+        : now - t0;
       const x = LABEL_W + PAD + (start / totalMs) * barW;
       const w = Math.max(3, ((end - start) / totalMs) * barW);
       const color = getToolColor(item.name);
-      const isRunning = !item.result;
+      const isRunning = item.status === 'running';
 
       // Label
       ctx.fillStyle = color;
@@ -71,13 +81,13 @@ export class Timeline {
       ctx.textAlign = 'right';
       ctx.fillText(item.name.slice(0, 7), LABEL_W, y + ROW_H / 2 + 3);
 
-      // Bar (pixel-style: no rounded corners)
+      // Bar
       ctx.fillStyle = color + '44';
       ctx.fillRect(Math.floor(x), y, Math.ceil(w), ROW_H);
       ctx.fillStyle = color + (isRunning ? 'aa' : 'cc');
       ctx.fillRect(Math.floor(x), y, Math.ceil(w), ROW_H);
 
-      // Pixel border on bar
+      // Border
       ctx.strokeStyle = color;
       ctx.lineWidth = 1;
       ctx.strokeRect(Math.floor(x) + 0.5, y + 0.5, Math.ceil(w) - 1, ROW_H - 1);

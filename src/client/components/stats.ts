@@ -1,26 +1,33 @@
+import type { ToolCall } from '../../shared/types.js';
 import { getToolColor } from '../utils/formatters.js';
 
 export class Stats {
+  private totalEl: HTMLElement;
+  private runningEl: HTMLElement;
+  private errorsEl: HTMLElement;
+  private barCanvas: HTMLCanvasElement;
+  private barCtx: CanvasRenderingContext2D;
+  private breakdownEl: HTMLElement;
+
   constructor() {
-    this.totalEl = document.getElementById('stat-total');
-    this.runningEl = document.getElementById('stat-running');
-    this.errorsEl = document.getElementById('stat-errors');
-    this.barCanvas = document.getElementById('bar-chart');
-    this.barCtx = this.barCanvas.getContext('2d');
-    this.breakdownEl = document.getElementById('tool-breakdown');
+    this.totalEl = document.getElementById('stat-total')!;
+    this.runningEl = document.getElementById('stat-running')!;
+    this.errorsEl = document.getElementById('stat-errors')!;
+    this.barCanvas = document.getElementById('bar-chart') as HTMLCanvasElement;
+    this.barCtx = this.barCanvas.getContext('2d')!;
+    this.breakdownEl = document.getElementById('tool-breakdown')!;
   }
 
-  update(toolCalls) {
+  update(toolCalls: ToolCall[]): void {
     const total = toolCalls.length;
     const running = toolCalls.filter(t => t.status === 'running').length;
     const errors = toolCalls.filter(t => t.status === 'error').length;
 
-    this.totalEl.textContent = total;
-    this.runningEl.textContent = running;
-    this.errorsEl.textContent = errors;
+    this.totalEl.textContent = String(total);
+    this.runningEl.textContent = String(running);
+    this.errorsEl.textContent = String(errors);
 
-    // Count by tool
-    const counts = {};
+    const counts: Record<string, number> = {};
     for (const tc of toolCalls) {
       counts[tc.name] = (counts[tc.name] || 0) + 1;
     }
@@ -28,7 +35,6 @@ export class Stats {
     const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
     const maxCount = sorted.length ? sorted[0][1] : 1;
 
-    // Breakdown list
     this.breakdownEl.innerHTML = sorted.map(([name, count]) => {
       const color = getToolColor(name);
       const pct = (count / maxCount) * 100;
@@ -42,11 +48,10 @@ export class Stats {
       `;
     }).join('');
 
-    // Bar chart on canvas
     this._drawBars(sorted);
   }
 
-  _drawBars(sorted) {
+  private _drawBars(sorted: [string, number][]): void {
     const canvas = this.barCanvas;
     const dpr = window.devicePixelRatio || 1;
     const w = canvas.parentElement?.clientWidth || 220;
@@ -71,14 +76,12 @@ export class Stats {
       const y = chartH - h + 10;
       const color = getToolColor(name);
 
-      // Pixel-style bar
       ctx.fillStyle = color + '88';
       ctx.fillRect(x, y, barW, h);
       ctx.strokeStyle = color;
       ctx.lineWidth = 1;
       ctx.strokeRect(x + 0.5, y + 0.5, barW - 1, h - 1);
 
-      // Label
       ctx.fillStyle = '#888';
       ctx.font = '7px monospace';
       ctx.textAlign = 'center';
@@ -88,7 +91,6 @@ export class Stats {
       ctx.fillText(name.slice(0, 5), 0, 0);
       ctx.restore();
 
-      // Count on top
       ctx.fillStyle = color;
       ctx.font = '8px "Press Start 2P", monospace';
       ctx.textAlign = 'center';
