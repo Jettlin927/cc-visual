@@ -5,6 +5,7 @@ import { prettyProject, fmtDuration, fmtTime, esc } from './utils/formatters.js'
 import type { Character } from './character.js';
 import { showToast } from './notifications.js';
 import { togglePin, isPinned } from './sidebar.js';
+import { Timeline } from './components/timeline.js';
 
 // ─── Module-private DOM refs ─────────────────────────────
 
@@ -19,6 +20,7 @@ let panelErrors: HTMLElement;
 let panelSlowest: HTMLElement;
 let panelHistory: HTMLElement;
 let sidePanel: HTMLElement;
+let timeline: Timeline;
 
 export function initPanel(): void {
   panelAvatar  = document.getElementById('panel-avatar')!;
@@ -32,6 +34,13 @@ export function initPanel(): void {
   panelSlowest = document.getElementById('panel-slowest')!;
   panelHistory = document.getElementById('panel-history')!;
   sidePanel    = document.getElementById('side-panel')!;
+
+  // Timeline
+  const tlCanvas = document.getElementById('timeline-canvas') as HTMLCanvasElement;
+  timeline = new Timeline(tlCanvas);
+  const tlOverlay = document.getElementById('timeline-overlay')!;
+  const tlClose = document.getElementById('timeline-close')!;
+  tlClose.addEventListener('click', () => tlOverlay.classList.add('hidden'));
 }
 
 export function showPanel(): void {
@@ -104,6 +113,19 @@ export function renderPanel(ch: Character, s: Session): void {
   });
   panelActions.appendChild(pinBtn);
 
+  const tlBtn = document.createElement('button');
+  tlBtn.className = 'px-btn';
+  tlBtn.textContent = '📈 TIME';
+  tlBtn.addEventListener('click', () => {
+    const overlay = document.getElementById('timeline-overlay')!;
+    const title = document.getElementById('timeline-title')!;
+    title.textContent = `TIMELINE — ${prettyProject(ch.session.project)}`;
+    overlay.classList.remove('hidden');
+    timeline.resize();
+    // Data will be loaded by fetchHistory
+  });
+  panelActions.appendChild(tlBtn);
+
   if (ch.session.source === 'claude' && ch.session.filePath) {
     const viewBtn = document.createElement('button');
     viewBtn.className = 'px-btn';
@@ -153,6 +175,9 @@ export async function fetchHistory(ch: Character): Promise<void> {
       lastAssistantText = (d.lastAssistantText as string | null) ?? null;
       recentErrors = ((d.recentErrors || []) as ToolCall[]);
     }
+
+    // Feed timeline
+    timeline.setData(allToolCalls);
 
     // Render last reply
     if (lastAssistantText) {

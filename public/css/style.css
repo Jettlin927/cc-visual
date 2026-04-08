@@ -733,3 +733,45 @@ body {
   font-size: 7px;
   flex-shrink: 0;
 }
+
+/* ─── TIMELINE OVERLAY ─── */
+.timeline-overlay {
+  position: fixed;
+  top: var(--hud-h);
+  left: var(--sidebar-w);
+  right: 0;
+  bottom: 0;
+  background: var(--panel-bg);
+  z-index: 95;
+  display: flex;
+  flex-direction: column;
+}
+.timeline-overlay.hidden { display: none; }
+
+.timeline-header {
+  padding: 8px 12px;
+  background: rgba(233,69,96,0.12);
+  border-bottom: 2px solid rgba(233,69,96,0.4);
+  font-size: 9px;
+  color: var(--orange);
+  letter-spacing: 1px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.timeline-header .close-btn {
+  position: static;
+}
+
+.timeline-body {
+  flex: 1;
+  overflow: hidden;
+}
+
+.timeline-body canvas {
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
