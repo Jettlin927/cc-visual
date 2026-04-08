@@ -237,6 +237,83 @@ initInteraction(canvas, {
   clearSelection,
 });
 
+// ─── Stats Panel ────────────────────────────────────────
+const statsPanel = document.getElementById('stats-panel')!;
+const statsBody  = document.getElementById('stats-body')!;
+const statsBtn   = document.getElementById('hud-stats-btn')!;
+const statsClose = document.getElementById('stats-close')!;
+const hudTools   = document.getElementById('hud-tools')!;
+
+interface StatsResponse {
+  totalSessions: number;
+  activeSessions: number;
+  totalToolCalls: number;
+  claudeCount: number;
+  codexCount: number;
+  byProject: Record<string, { sessions: number; tools: number }>;
+  byTool: Record<string, number>;
+}
+
+function statsBar(label: string, value: number, max: number, color: string): string {
+  const pct = max > 0 ? (value / max * 100) : 0;
+  return `<div class="stats-bar-row">
+    <span class="stats-bar-label">${label}</span>
+    <div class="stats-bar-track"><div class="stats-bar-fill" style="width:${pct}%;background:${color}"></div></div>
+    <span class="stats-bar-value">${value}</span>
+  </div>`;
+}
+
+async function refreshStats(): Promise<void> {
+  try {
+    const r = await fetch('/api/stats');
+    const d: StatsResponse = await r.json();
+    const total = d.claudeCount + d.codexCount || 1;
+
+    let html = '';
+    html += `<div class="diag-row"><span class="diag-label">Sessions</span><span class="diag-value ok">${d.totalSessions} total / ${d.activeSessions} active</span></div>`;
+    html += `<div class="diag-row"><span class="diag-label">Tool calls</span><span class="diag-value ok">${d.totalToolCalls}</span></div>`;
+    html += '<div style="margin-top:6px;font-size:7px;color:#666;letter-spacing:1px">SOURCE SPLIT</div>';
+    html += statsBar('Claude', d.claudeCount, total, '#3a3');
+    html += statsBar('Codex', d.codexCount, total, '#58a6ff');
+
+    // Tool distribution
+    const toolEntries = Object.entries(d.byTool).sort((a, b) => b[1] - a[1]).slice(0, 8);
+    if (toolEntries.length > 0) {
+      const maxTool = toolEntries[0][1];
+      html += '<div style="margin-top:6px;font-size:7px;color:#666;letter-spacing:1px">TOP TOOLS</div>';
+      for (const [name, count] of toolEntries) {
+        html += statsBar(name, count, maxTool, '#fa0');
+      }
+    }
+
+    // Project distribution
+    const projEntries = Object.entries(d.byProject).sort((a, b) => b[1].tools - a[1].tools).slice(0, 6);
+    if (projEntries.length > 0) {
+      const maxProj = projEntries[0][1].tools;
+      html += '<div style="margin-top:6px;font-size:7px;color:#666;letter-spacing:1px">PROJECTS</div>';
+      for (const [name, data] of projEntries) {
+        const short = name.split('/').pop() || name;
+        html += statsBar(short, data.tools, maxProj, '#0ff');
+      }
+    }
+
+    statsBody.innerHTML = html;
+
+    // Update HUD tool count
+    hudTools.textContent = `${d.totalToolCalls} tools`;
+    hudTools.style.display = d.totalToolCalls > 0 ? '' : 'none';
+  } catch {
+    statsBody.innerHTML = '<div class="diag-row"><span class="diag-value error">Failed to load stats</span></div>';
+  }
+}
+
+statsBtn.addEventListener('click', () => {
+  const isHidden = statsPanel.classList.contains('hidden');
+  statsPanel.classList.toggle('hidden');
+  if (isHidden) void refreshStats();
+});
+statsClose.addEventListener('click', () => statsPanel.classList.add('hidden'));
+
 // ─── Mute Button ────────────────────────────────────────
 const muteBtn = document.getElementById('hud-mute-btn')!;
 muteBtn.textContent = isMuted() ? '🔇' : '🔊';

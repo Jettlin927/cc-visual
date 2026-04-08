@@ -15,8 +15,10 @@
       <span class="logo-text">👾 CLAUDE WORLD</span>
       <span id="active-count" class="hud-badge">0 ACTIVE</span>
       <span id="hud-waiting" class="hud-badge hud-waiting" style="display:none">⚠ 0 waiting</span>
+      <span id="hud-tools" class="hud-badge" style="border-color:var(--magenta);color:var(--magenta);display:none">0 tools</span>
     </div>
     <div class="hud-right">
+      <button id="hud-stats-btn" class="hud-icon-btn" title="Statistics">📊</button>
       <button id="hud-mute-btn" class="hud-icon-btn" title="Toggle sound">🔊</button>
       <button id="hud-settings-btn" class="hud-icon-btn" title="Notification settings">🔔</button>
       <button id="hud-diag-btn" class="hud-icon-btn" title="Diagnostics">⚙</button>
@@ -77,6 +79,15 @@
       <button id="diag-close" class="px-btn close-btn">✕</button>
     </div>
     <div id="diag-body" class="diag-body"></div>
+  </div>
+
+  <!-- Stats Panel -->
+  <div id="stats-panel" class="diag-panel hidden" style="width:360px">
+    <div class="diag-header">
+      <span>STATISTICS</span>
+      <button id="stats-close" class="px-btn close-btn">✕</button>
+    </div>
+    <div id="stats-body" class="diag-body"></div>
   </div>
 
   <!-- Settings Panel -->

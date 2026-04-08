@@ -250,6 +250,43 @@ export function createRouter(config: AppConfig): Router {
     res.json(result);
   });
 
+  // Stats aggregation
+  router.get('/api/stats', async (_req, res) => {
+    try {
+      const sessions = await getActiveSessions(config);
+      const active = sessions.filter(s => s.status === 'running' || s.status === 'waiting');
+      let totalToolCalls = 0;
+      let claudeCount = 0;
+      let codexCount = 0;
+      const byProject: Record<string, { sessions: number; tools: number }> = {};
+      const byTool: Record<string, number> = {};
+
+      for (const s of sessions) {
+        totalToolCalls += s.toolCount;
+        if (s.source === 'claude') claudeCount++; else codexCount++;
+        const proj = s.project;
+        if (!byProject[proj]) byProject[proj] = { sessions: 0, tools: 0 };
+        byProject[proj].sessions++;
+        byProject[proj].tools += s.toolCount;
+        if (s.lastTool) {
+          byTool[s.lastTool.name] = (byTool[s.lastTool.name] ?? 0) + 1;
+        }
+      }
+
+      res.json({
+        totalSessions: sessions.length,
+        activeSessions: active.length,
+        totalToolCalls,
+        claudeCount,
+        codexCount,
+        byProject,
+        byTool,
+      });
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
   // Open project folder in system file manager
   router.post('/api/open-folder', express.json(), (req, res) => {
     const { path: folderPath } = req.body as { path?: string };
