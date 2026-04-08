@@ -1,4 +1,4 @@
-import type { Session, SessionSource } from '../shared/types.js';
+import type { Session, SessionSource, SessionStatus } from '../shared/types.js';
 import { TOOL_META } from '../shared/tool-metadata.js';
 import { prettyProject } from './utils/formatters.js';
 
@@ -7,7 +7,7 @@ export interface SidebarCallbacks {
 }
 
 // ─── Filter state ───────────────────────────────────────
-type StatusFilter = 'all' | 'running' | 'waiting' | 'idle';
+type StatusFilter = SessionStatus | 'all';
 
 let activeStatus: StatusFilter = 'all';
 let activeSources: Set<SessionSource> = new Set(['claude', 'codex']);
@@ -38,6 +38,38 @@ function saveSeen(set: Set<string>): void {
 }
 
 const seenSessions: Set<string> = loadSeen();
+let seenDirty = false;
+
+// ─── Pinned sessions (localStorage) ────────────────────
+const PIN_KEY = 'cc-visual-pinned-sessions';
+
+function loadPinned(): Set<string> {
+  try {
+    const raw = localStorage.getItem(PIN_KEY);
+    if (raw) return new Set(JSON.parse(raw) as string[]);
+  } catch { /* ignore */ }
+  return new Set();
+}
+
+function savePinned(set: Set<string>): void {
+  localStorage.setItem(PIN_KEY, JSON.stringify([...set]));
+}
+
+const pinnedSessions: Set<string> = loadPinned();
+
+export function togglePin(sessionId: string): void {
+  if (pinnedSessions.has(sessionId)) {
+    pinnedSessions.delete(sessionId);
+  } else {
+    pinnedSessions.add(sessionId);
+  }
+  savePinned(pinnedSessions);
+  reRender();
+}
+
+export function isPinned(sessionId: string): boolean {
+  return pinnedSessions.has(sessionId);
+}
 
 // ─── Helpers ────────────────────────────────────────────
 function timeAgo(ms: number): string {
@@ -83,6 +115,8 @@ function countByStatus(list: Session[]): Record<string, number> {
 }
 
 // ─── Filter bar rendering ───────────────────────────────
+let prevFilterFingerprint = '';
+
 function renderFilters(list: Session[]): void {
   const statusRow = document.getElementById('status-filters');
   const sourceRow = document.getElementById('source-filters');
@@ -90,56 +124,59 @@ function renderFilters(list: Session[]): void {
 
   const counts = countByStatus(list);
 
-  // Status buttons
-  const statuses: { key: StatusFilter; label: string }[] = [
-    { key: 'all', label: 'ALL' },
-    { key: 'running', label: 'RUN' },
-    { key: 'waiting', label: 'WAIT' },
-    { key: 'idle', label: 'IDLE' },
-  ];
+  // Skip DOM rebuild if nothing changed
+  const fingerprint = `${list.length}|${counts.running}|${counts.waiting}|${counts.idle}|${activeStatus}|${[...activeSources].join(',')}|${groupByProject}`;
+  const needsRebuild = fingerprint !== prevFilterFingerprint;
+  prevFilterFingerprint = fingerprint;
 
-  statusRow.innerHTML = '';
-  for (const { key, label } of statuses) {
-    const btn = document.createElement('button');
-    btn.className = 'filter-btn' + (activeStatus === key ? ' active' : '');
-    const count = key === 'all' ? list.length : (counts[key] ?? 0);
-    btn.innerHTML = `${label}<span class="filter-badge">${count}</span>`;
-    btn.addEventListener('click', () => {
-      activeStatus = key;
-      reRender();
-    });
-    statusRow.appendChild(btn);
-  }
+  if (needsRebuild) {
+    const statuses: { key: StatusFilter; label: string }[] = [
+      { key: 'all', label: 'ALL' },
+      { key: 'running', label: 'RUN' },
+      { key: 'waiting', label: 'WAIT' },
+      { key: 'idle', label: 'IDLE' },
+    ];
 
-  // Source buttons
-  const sources: { key: SessionSource; label: string }[] = [
-    { key: 'claude', label: 'CC' },
-    { key: 'codex', label: 'GPT' },
-  ];
+    statusRow.innerHTML = '';
+    for (const { key, label } of statuses) {
+      const btn = document.createElement('button');
+      btn.className = 'filter-btn' + (activeStatus === key ? ' active' : '');
+      const count = key === 'all' ? list.length : (counts[key] ?? 0);
+      btn.innerHTML = `${label}<span class="filter-badge">${count}</span>`;
+      btn.addEventListener('click', () => {
+        activeStatus = key;
+        reRender();
+      });
+      statusRow.appendChild(btn);
+    }
 
-  // Preserve the GRP button before clearing
-  const existingGrp = document.getElementById('group-toggle');
-  sourceRow.innerHTML = '';
+    const sources: { key: SessionSource; label: string }[] = [
+      { key: 'claude', label: 'CC' },
+      { key: 'codex', label: 'GPT' },
+    ];
 
-  for (const { key, label } of sources) {
-    const btn = document.createElement('button');
-    btn.className = 'filter-btn' + (activeSources.has(key) ? ' active' : '');
-    btn.textContent = label;
-    btn.addEventListener('click', () => {
-      if (activeSources.has(key)) {
-        if (activeSources.size > 1) activeSources.delete(key);
-      } else {
-        activeSources.add(key);
-      }
-      reRender();
-    });
-    sourceRow.appendChild(btn);
-  }
+    const existingGrp = document.getElementById('group-toggle');
+    sourceRow.innerHTML = '';
 
-  // Re-append GRP toggle button (update active state)
-  if (existingGrp) {
-    existingGrp.className = 'filter-btn' + (groupByProject ? ' active' : '');
-    sourceRow.appendChild(existingGrp);
+    for (const { key, label } of sources) {
+      const btn = document.createElement('button');
+      btn.className = 'filter-btn' + (activeSources.has(key) ? ' active' : '');
+      btn.textContent = label;
+      btn.addEventListener('click', () => {
+        if (activeSources.has(key)) {
+          if (activeSources.size > 1) activeSources.delete(key);
+        } else {
+          activeSources.add(key);
+        }
+        reRender();
+      });
+      sourceRow.appendChild(btn);
+    }
+
+    if (existingGrp) {
+      existingGrp.className = 'filter-btn' + (groupByProject ? ' active' : '');
+      sourceRow.appendChild(existingGrp);
+    }
   }
 
   // Bind one-time event listeners
@@ -209,9 +246,13 @@ export function renderSessionList(
   for (const id of seenSessions) {
     if (!list.some(s => s.sessionId === id && s.status === 'waiting')) {
       seenSessions.delete(id);
+      seenDirty = true;
     }
   }
-  saveSeen(seenSessions);
+  if (seenDirty) {
+    saveSeen(seenSessions);
+    seenDirty = false;
+  }
 
   const filtered = filterSessions(list);
 
@@ -227,6 +268,24 @@ export function renderSessionList(
   otherSessions.sort((a, b) => (order[a.status] ?? 1) - (order[b.status] ?? 1));
 
   container.innerHTML = '';
+
+  // ── Pinned sessions ─────────────────────────────────
+  const pinned = filtered.filter(s => pinnedSessions.has(s.sessionId) && s.status !== 'waiting');
+  if (pinned.length > 0) {
+    const pinSection = document.createElement('div');
+    pinSection.className = 'pending-section';
+    const pinHeader = document.createElement('div');
+    pinHeader.className = 'pending-header';
+    pinHeader.style.color = 'var(--cyan)';
+    pinHeader.style.background = 'rgba(0,255,255,0.08)';
+    pinHeader.style.borderColor = 'rgba(0,255,255,0.3)';
+    pinHeader.innerHTML = `<span>📌 PINNED</span><span class="pending-header-count" style="background:var(--cyan);color:#000">${pinned.length}</span>`;
+    pinSection.appendChild(pinHeader);
+    for (const s of pinned) {
+      pinSection.appendChild(buildSessionItem(s, selected, callbacks, false));
+    }
+    container.appendChild(pinSection);
+  }
 
   // ── Pending section ──────────────────────────────────
   if (waitingSessions.length > 0) {
@@ -359,7 +418,7 @@ function buildSessionItem(
       } else {
         seenSessions.add(s.sessionId);
       }
-      saveSeen(seenSessions);
+      seenDirty = true;
       reRender();
     });
 

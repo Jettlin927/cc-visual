@@ -3,12 +3,15 @@ import { TOOL_META, TOOL_DEFAULT } from '../shared/tool-metadata.js';
 import { HISTORY_ITEMS } from '../shared/constants.js';
 import { prettyProject, fmtDuration, fmtTime, esc } from './utils/formatters.js';
 import type { Character } from './character.js';
+import { showToast } from './notifications.js';
+import { togglePin, isPinned } from './sidebar.js';
 
 // ─── Module-private DOM refs ─────────────────────────────
 
 let panelAvatar: HTMLElement;
 let panelSession: HTMLElement;
 let panelProject: HTMLElement;
+let panelActions: HTMLElement;
 let panelTool: HTMLElement;
 let panelReply: HTMLElement;
 let panelErrorsTitle: HTMLElement;
@@ -21,6 +24,7 @@ export function initPanel(): void {
   panelAvatar  = document.getElementById('panel-avatar')!;
   panelSession = document.getElementById('panel-session')!;
   panelProject = document.getElementById('panel-project')!;
+  panelActions = document.getElementById('panel-actions')!;
   panelTool    = document.getElementById('panel-tool')!;
   panelReply   = document.getElementById('panel-reply')!;
   panelErrorsTitle = document.getElementById('panel-errors-title')!;
@@ -61,6 +65,54 @@ export function renderPanel(ch: Character, s: Session): void {
   panelSession.textContent = ch.id.slice(0, 16) + '...';
   panelProject.textContent = prettyProject(ch.session.project)
     + (ch.session.source === 'codex' && ch.session.model ? ` \u00B7 ${ch.session.model}` : '');
+
+  // Action buttons
+  panelActions.innerHTML = '';
+  const copyBtn = document.createElement('button');
+  copyBtn.className = 'px-btn';
+  copyBtn.textContent = '📋 COPY ID';
+  copyBtn.addEventListener('click', () => {
+    void navigator.clipboard.writeText(ch.id);
+    showToast('Copied: ' + ch.id.slice(0, 16));
+  });
+  panelActions.appendChild(copyBtn);
+
+  const folderBtn = document.createElement('button');
+  folderBtn.className = 'px-btn';
+  folderBtn.textContent = '📂 FOLDER';
+  folderBtn.addEventListener('click', () => {
+    const proj = ch.session.project;
+    const path = prettyProject(proj).replace(/^~/, '');
+    const homedir = proj.match(/^-Users-([^-]+)/)?.[1] || '';
+    const fullPath = homedir ? `C:/Users/${homedir}${path}` : proj;
+    void fetch('/api/open-folder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: fullPath }),
+    }).then(r => r.json()).then(d => {
+      if (!(d as { ok: boolean }).ok) showToast('Failed to open folder');
+    });
+  });
+  panelActions.appendChild(folderBtn);
+
+  const pinBtn = document.createElement('button');
+  pinBtn.className = 'px-btn';
+  pinBtn.textContent = isPinned(ch.id) ? '📌 UNPIN' : '📌 PIN';
+  pinBtn.addEventListener('click', () => {
+    togglePin(ch.id);
+    pinBtn.textContent = isPinned(ch.id) ? '📌 UNPIN' : '📌 PIN';
+  });
+  panelActions.appendChild(pinBtn);
+
+  if (ch.session.source === 'claude' && ch.session.filePath) {
+    const viewBtn = document.createElement('button');
+    viewBtn.className = 'px-btn';
+    viewBtn.textContent = '📄 LOG';
+    viewBtn.addEventListener('click', () => {
+      window.open(`/api/transcript?path=${encodeURIComponent(ch.session.filePath!)}`, '_blank');
+    });
+    panelActions.appendChild(viewBtn);
+  }
 
   const tool: ToolCall | null = s?.lastTool || ch.currentTool;
   if (tool) {

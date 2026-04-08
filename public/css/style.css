@@ -349,6 +349,18 @@ body {
 .panel-field      { font-size: 8px; color: var(--cyan); text-align: center; word-break: break-all; }
 .panel-field.muted { color: var(--muted); font-size: 7px; }
 
+.panel-actions {
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.panel-actions .px-btn {
+  font-size: 6px;
+  padding: 2px 6px;
+}
+
 .panel-divider { height: 2px; background: var(--border); opacity: 0.3; }
 
 .panel-section-title { font-size: 7px; color: var(--muted); letter-spacing: 1px; }

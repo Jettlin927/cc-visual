@@ -1,8 +1,10 @@
 import { Router } from 'express';
 import { existsSync } from 'fs';
 import { watch } from 'fs';
-import { readdir, readFile as readFileAsync, stat as statAsync } from 'fs/promises';
+import { readFile as readFileAsync, stat as statAsync } from 'fs/promises';
 import { join } from 'path';
+import { exec } from 'child_process';
+import { platform } from 'os';
 import { DatabaseSync } from 'node:sqlite';
 
 import type { AppConfig, ClaudeSession, JournalEntry, Session } from '../shared/types.js';
@@ -41,26 +43,22 @@ export function createRouter(config: AppConfig): Router {
   let sseClients = 0;
   let lastScanAt: string | null = null;
 
-  // Health check
+  // Health check — reuses scanProjects() instead of manual directory walk
   router.get('/api/health', async (_req, res) => {
     try {
-      // Claude dir
       const claudeDirExists = existsSync(config.claudeDir);
+      const codexDirExists = existsSync(config.codexDir);
+
+      // Reuse scanProjects for JSONL file count
       let scannedFiles = 0;
       if (claudeDirExists) {
         try {
-          const projectsDir = join(config.claudeDir, 'projects');
-          const entries = await readdir(projectsDir, { withFileTypes: true });
-          for (const entry of entries) {
-            if (!entry.isDirectory()) continue;
-            const files = await readdir(join(projectsDir, entry.name));
-            scannedFiles += files.filter(f => f.endsWith('.jsonl')).length;
-          }
+          const projects = await scanProjects(config);
+          scannedFiles = projects.length;
         } catch { /* projects dir may not exist */ }
       }
 
-      // Codex dir
-      const codexDirExists = existsSync(config.codexDir);
+      // Codex SQLite check
       let codexSqliteReadable = false;
       if (codexDirExists) {
         try {
@@ -73,7 +71,6 @@ export function createRouter(config: AppConfig): Router {
         } catch { /* not readable */ }
       }
 
-      // Active sessions for filtered count
       const sessions = await getActiveSessions(config);
       const now = Date.now();
       const filteredSessions = sessions.filter(
@@ -251,6 +248,30 @@ export function createRouter(config: AppConfig): Router {
     }
     const result = await focusWindow(pid);
     res.json(result);
+  });
+
+  // Open project folder in system file manager
+  router.post('/api/open-folder', express.json(), (req, res) => {
+    const { path: folderPath } = req.body as { path?: string };
+    if (!folderPath) {
+      res.status(400).json({ error: 'Missing path' });
+      return;
+    }
+    if (!existsSync(folderPath)) {
+      res.status(404).json({ error: 'Path does not exist' });
+      return;
+    }
+    const os = platform();
+    const cmd = os === 'win32' ? `explorer "${folderPath}"`
+      : os === 'darwin' ? `open "${folderPath}"`
+      : `xdg-open "${folderPath}"`;
+    exec(cmd, (err) => {
+      if (err) {
+        res.json({ ok: false, reason: err.message });
+      } else {
+        res.json({ ok: true });
+      }
+    });
   });
 
   return router;
