@@ -1,9 +1,8 @@
 import { Direction } from '../shared/types.js';
 import type { Session, ToolCall, TileMap, ToolMeta } from '../shared/types.js';
 import { TILE_SIZE } from '../shared/constants.js';
-import { TOOL_META, TOOL_DEFAULT, getToolPose } from '../shared/tool-metadata.js';
-import { isWalkable, walkableTileInZone } from './world.js';
-import type { ZoneType } from './world.js';
+import { TOOL_META, TOOL_DEFAULT } from '../shared/tool-metadata.js';
+import { isWalkable, ZONES, getZoneTarget } from './world.js';
 import { inputPreview } from './utils/formatters.js';
 import { prettyProject } from './utils/formatters.js';
 
@@ -27,9 +26,14 @@ function hashStr(s: string): number {
   return Math.abs(h);
 }
 
-function hsl(h: number, s: number, l: number): string {
-  return `hsl(${Math.floor(h)},${Math.floor(s)}%,${Math.floor(l)}%)`;
-}
+// ── Curated palette arrays ──
+const SKIN_TONES = ['#fce4c0', '#f5d0a9', '#e8b88a', '#d4a373', '#c08a5c', '#a0704a', '#8b5e3c', '#6b4226'];
+const HAIR_COLORS = ['#2c1810', '#4a2c17', '#8b4513', '#654321', '#d4a76a', '#c4944a', '#1a1a2e', '#3d1c02'];
+const SHIRT_COLORS = [
+  '#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c',
+  '#e67e22', '#5dade2', '#48c9b0', '#f1948a', '#85c1e9', '#82e0aa',
+];
+const EYE_COLORS = ['#222', '#2c5aa0', '#2a7a3a', '#6b3a2a'];
 
 // ─── Character class ─────────────────────────────────────
 
@@ -42,7 +46,8 @@ export class Character {
   skinColor: string;
   shirtColor: string;
   hairColor: string;
-  hatType: number;
+  hairStyle: number;
+  eyeColor: string;
 
   // Position
   x: number;
@@ -60,13 +65,14 @@ export class Character {
   walkTime: number;
   dir: Direction;
   bobOffset: number;
-  idleTime: number;
+  waveAngle: number;
 
   // Source
   isCodex: boolean;
 
   // Tool state
   currentTool: ToolCall | null;
+  toolName: string | undefined;
   bubbleAlpha: number;
   bubbleScale: number;
   selected: boolean;
@@ -74,8 +80,8 @@ export class Character {
   // Tool action animation
   actionTime: number;
 
-  // Status tracking for zone transitions
-  private _lastStatus: string;
+  // Status tracking
+  status: string;
 
   displayLabel: string;
 
@@ -89,40 +95,41 @@ export class Character {
     const seed = hashStr(this.id);
     this.rng = mkRng(seed);
 
-    // Deterministic appearance from seed
-    this.skinColor  = hsl(this.rng() * 360, 40 + this.rng() * 30, 55 + this.rng() * 20);
-    this.shirtColor = hsl(this.rng() * 360, 60 + this.rng() * 30, 40 + this.rng() * 20);
-    this.hairColor  = hsl(this.rng() * 60, 30 + this.rng() * 40, 20 + this.rng() * 30);
-    this.hatType    = Math.floor(this.rng() * 4);
+    // Deterministic appearance from palettes
+    this.skinColor  = SKIN_TONES[Math.floor(this.rng() * SKIN_TONES.length)];
+    this.shirtColor = SHIRT_COLORS[Math.floor(this.rng() * SHIRT_COLORS.length)];
+    this.hairColor  = HAIR_COLORS[Math.floor(this.rng() * HAIR_COLORS.length)];
+    this.hairStyle  = Math.floor(this.rng() * 4);
+    this.eyeColor   = EYE_COLORS[Math.floor(this.rng() * 4)];
 
-    // Position — spawn in zone matching initial status
-    const zone = Character._statusZone(session.status);
-    const spawn = walkableTileInZone(map, () => this.rng(), zone);
+    // Position — spawn at rest zone
+    const spawn = ZONES.rest;
     this.x  = spawn.tx * TILE_SIZE + TILE_SIZE / 2;
     this.y  = spawn.ty * TILE_SIZE + TILE_SIZE / 2;
     this.tx = spawn.tx;
     this.ty = spawn.ty;
-    this._lastStatus = session.status;
+    this.status = session.status;
 
-    // Pathfinding
+    // Movement
     this.targetX = this.x;
     this.targetY = this.y;
-    this.path = [];
+    this.path = null;
     this.moving = false;
-    this.speed = 60 + this.rng() * 30;
+    this.speed = 70 + this.rng() * 20;
 
     // Animation
     this.walkFrame = 0;
     this.walkTime  = 0;
     this.dir = Direction.DOWN;
     this.bobOffset = 0;
-    this.idleTime = 0;
+    this.waveAngle = 0;
 
     // Source
     this.isCodex = session.source === 'codex';
 
     // Tool state
     this.currentTool = session.lastTool || null;
+    this.toolName = this.currentTool?.name;
     this.bubbleAlpha = 0;
     this.bubbleScale = 0;
     this.selected = false;
@@ -131,44 +138,23 @@ export class Character {
     this.actionTime = 0;
 
     this.displayLabel = this._computeLabel();
-    this.pickNewTarget();
+    this._navigateToZone();
   }
 
-  private static _statusZone(status: string): ZoneType {
-    if (status === 'waiting') return 'center';
-    if (status === 'running') return 'middle';
-    return 'edge';
+  private _navigateToZone(): void {
+    const zone = getZoneTarget(this.toolName, this.session.status);
+    this.targetX = zone.tx * TILE_SIZE + TILE_SIZE / 2;
+    this.targetY = zone.ty * TILE_SIZE + TILE_SIZE / 2;
+    this.moving = true;
   }
 
   pickNewTarget(): void {
-    const status = this.session.status;
-    if (status === 'waiting') return; // waiting chars stay put in center
-    const zone = Character._statusZone(status);
-    const dest = walkableTileInZone(this.map, () => this.rng(), zone);
-    this.targetX = dest.tx * TILE_SIZE + TILE_SIZE / 2;
-    this.targetY = dest.ty * TILE_SIZE + TILE_SIZE / 2;
-    this.path = null;
-    this.moving = true;
-    this.idleTime = 0;
-  }
-
-  /** Move character to a new zone when status changes */
-  private _moveToZone(zone: ZoneType): void {
-    const dest = walkableTileInZone(this.map, () => this.rng(), zone);
-    this.targetX = dest.tx * TILE_SIZE + TILE_SIZE / 2;
-    this.targetY = dest.ty * TILE_SIZE + TILE_SIZE / 2;
-    this.path = null;
-    this.moving = true;
-    this.idleTime = 0;
+    this._navigateToZone();
   }
 
   update(dt: number, t: number): void {
     this.walkTime += dt;
     this.actionTime += dt;
-
-    const status = this.session.status;
-    // Waiting characters stop once they reach their zone target
-    // (but they can still be mid-movement to their zone)
 
     if (this.moving) {
       const dx = this.targetX - this.x;
@@ -179,8 +165,6 @@ export class Character {
         this.x = this.targetX;
         this.y = this.targetY;
         this.moving = false;
-        this.idleTime = 0;
-        setTimeout(() => this.pickNewTarget(), 1000 + this.rng() * 2000);
       } else {
         const step = Math.min(this.speed * dt, dist);
         const nx = this.x + (dx / dist) * step;
@@ -200,8 +184,10 @@ export class Character {
           this.tx = ntx;
           this.ty = nty;
         } else {
+          // Teleport to target on collision (room is small)
+          this.x = this.targetX;
+          this.y = this.targetY;
           this.moving = false;
-          setTimeout(() => this.pickNewTarget(), 200);
         }
 
         if (this.walkTime > 0.125) {
@@ -210,12 +196,19 @@ export class Character {
         }
       }
     } else {
-      this.idleTime += dt;
       this.walkFrame = 0;
-      if (status === 'idle') {
-        this.bobOffset = Math.sin(t / 1400) * 0.7;
+      const status = this.session.status;
+
+      if (status === 'waiting') {
+        this.waveAngle = Math.sin(t / 400) * 0.5;
+        this.bobOffset = 0;
+        this.dir = Direction.DOWN;
+      } else if (status === 'idle') {
+        this.bobOffset = Math.sin(t / 1400) * 1.5;
       } else {
-        this.bobOffset = Math.sin(t / 800) * 1;
+        // Working — face furniture (UP)
+        this.dir = Direction.UP;
+        this.bobOffset = Math.sin(t / 600) * 0.5;
       }
     }
 
@@ -236,20 +229,19 @@ export class Character {
   }
 
   updateSession(session: Session): void {
-    const oldTool = this.currentTool?.name;
+    const oldTool = this.toolName;
+    const oldStatus = this.status;
     const projectChanged = session.project !== this.session.project;
-    const oldStatus = this._lastStatus;
     this.session = session;
     this.currentTool = session.lastTool || null;
+    this.toolName = this.currentTool?.name;
     if (projectChanged) this.displayLabel = this._computeLabel();
 
-    // Status changed → move to new zone
-    if (session.status !== oldStatus) {
-      this._lastStatus = session.status;
-      this._moveToZone(Character._statusZone(session.status));
-    } else if (this.currentTool?.name !== oldTool && this.currentTool?.status === 'running') {
+    // Re-navigate when tool or status changes
+    if (this.toolName !== oldTool || session.status !== oldStatus) {
+      this.status = session.status;
       this.actionTime = 0;
-      if (!this.moving) this.pickNewTarget();
+      this._navigateToZone();
     }
   }
 
@@ -265,17 +257,15 @@ export class Character {
     const sc = Character.SPRITE_SCALE;
     ctx.save();
 
-    // Idle characters are semi-transparent
     if (this.session.status === 'idle') {
       ctx.globalAlpha = 0.4;
     }
 
     if (this.selected) {
-      ctx.shadowBlur = 12;
+      ctx.shadowBlur = 14;
       ctx.shadowColor = '#0ff';
     }
 
-    // Scale character sprite around its position
     ctx.save();
     ctx.translate(sx, sy);
     ctx.scale(sc, sc);
@@ -285,14 +275,14 @@ export class Character {
 
     ctx.restore();
 
-    this._drawNameTag(ctx, sx, sy - 10);
+    this._drawNameTag(ctx, sx, sy);
 
     if (this.session.status === 'waiting') {
-      this._drawExclamationBubble(ctx, sx, sy - 10, t);
+      this._drawExclamationBubble(ctx, sx, sy, t);
     }
 
     if (this.bubbleAlpha > 0.01) {
-      this._drawBubble(ctx, sx, sy - 10, t);
+      this._drawBubble(ctx, sx, sy, t);
     }
   }
 
@@ -300,137 +290,150 @@ export class Character {
     const walk = this.moving;
     const frame = this.walkFrame;
     const flip = this.dir === Direction.LEFT;
-    const sessionStatus = this.session.status;
-    const isIdle    = sessionStatus === 'idle';
-    const isWaiting = sessionStatus === 'waiting';
-    const isRunning = sessionStatus === 'running';
-
-    const crouchY = isIdle ? 3 : 0;
+    const isWaiting = this.session.status === 'waiting';
+    const isIdle = this.session.status === 'idle';
 
     ctx.save();
     ctx.translate(sx, sy);
-    if (flip) { ctx.scale(-1, 1); }
+    if (flip) ctx.scale(-1, 1);
 
     // Shadow
-    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
     ctx.beginPath();
-    ctx.ellipse(0, 10 + crouchY, 7, 3, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 12, 8, 3, 0, 0, Math.PI * 2);
     ctx.fill();
 
     // Legs
-    const legY = 4 + crouchY;
-    const legH = isIdle ? 3 : 6;
-
-    ctx.fillStyle = '#555';
-    ctx.fillRect(-5, legY, 4, legH + (walk && frame % 2 === 0 ? -2 : 0));
-    ctx.fillRect(1, legY, 4, legH + (walk && frame % 2 === 1 ? -2 : 0));
+    ctx.fillStyle = '#4a4a5a';
+    ctx.fillRect(-4, 4, 3, 8 + (walk && frame % 2 === 0 ? -2 : 0));
+    ctx.fillRect(1, 4, 3, 8 + (walk && frame % 2 === 1 ? -2 : 0));
+    // Shoes
+    ctx.fillStyle = '#333';
+    ctx.fillRect(-5, 10, 4, 3);
+    ctx.fillRect(1, 10, 4, 3);
 
     // Body
     ctx.fillStyle = this.shirtColor;
-    ctx.fillRect(-7, -4 + crouchY, 14, 10);
+    ctx.fillRect(-6, -4, 12, 10);
+    // Shirt highlight
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    ctx.fillRect(-5, -3, 4, 6);
 
     // Arms
-    const armSwing = walk ? Math.sin(this.walkTime * Math.PI * 8) * 3 * -0.7 : 0;
-
-    let leftArmY = -3 + crouchY + (walk ? -armSwing / -0.7 * -0.7 : 0);
-    let rightArmY = -3 + crouchY - (walk ? -armSwing / -0.7 * -0.7 : 0);
-    let leftArmH = 8, rightArmH = 8;
-    let leftHandY = 4 + crouchY + (walk ? -armSwing / -0.7 * -0.7 : 0);
-    let rightHandY = 4 + crouchY - (walk ? -armSwing / -0.7 * -0.7 : 0);
-    let toolPropColor: string | null = null;
-
-    // Recalculate arm swing properly matching the original
     const legSwing = walk ? Math.sin(this.walkTime * Math.PI * 8) * 3 : 0;
-    const origArmSwing = walk ? legSwing * -0.7 : 0;
-    leftArmY = -3 + crouchY + origArmSwing;
-    rightArmY = -3 + crouchY - origArmSwing;
-    leftHandY = 4 + crouchY + origArmSwing;
-    rightHandY = 4 + crouchY - origArmSwing;
+    const armSwing = walk ? legSwing * -0.5 : 0;
+    let leftArmEnd = 5 + armSwing;
+    let rightArmEnd = 5 - armSwing;
 
-    if (isWaiting) {
-      rightArmY  = -14;
-      rightArmH  = 12;
-      rightHandY = -15;
-    } else if (isRunning && this.currentTool) {
-      const pose = getToolPose(this.currentTool.name);
-      leftArmY   = pose.leftArmY  + crouchY;
-      rightArmY  = pose.rightArmY + crouchY;
-      leftHandY  = pose.leftHandY + crouchY;
-      rightHandY = pose.rightHandY + crouchY;
-      toolPropColor = pose.propColor || null;
+    if (isWaiting && !walk) {
+      rightArmEnd = -8 + Math.sin(t / 400) * 4;
     }
 
+    // Left arm
     ctx.fillStyle = this.shirtColor;
-    ctx.fillRect(-10, leftArmY,  4, leftArmH);
-    ctx.fillRect( 6,  rightArmY, 4, rightArmH);
-
-    // Hands
+    ctx.fillRect(-9, -3, 3, 6);
     ctx.fillStyle = this.skinColor;
-    ctx.fillRect(-10, leftHandY,  4, 3);
-    ctx.fillRect( 6,  rightHandY, 4, 3);
+    ctx.fillRect(-9, Math.min(leftArmEnd, 4), 3, 3);
 
-    if (toolPropColor) {
-      ctx.fillStyle = toolPropColor;
-      ctx.fillRect(9, rightHandY - 3, 2, 5);
+    // Right arm
+    ctx.fillStyle = this.shirtColor;
+    if (isWaiting && !walk) {
+      ctx.fillRect(6, rightArmEnd, 3, Math.abs(rightArmEnd) + 4);
+    } else {
+      ctx.fillRect(6, -3, 3, 6);
     }
-
-    // Head
     ctx.fillStyle = this.skinColor;
-    ctx.fillRect(-6, -14, 12, 11);
+    ctx.fillRect(6, Math.min(rightArmEnd, 4), 3, 3);
 
-    // Eyes
-    ctx.fillStyle = '#222';
+    // Head (chibi: big & round)
+    ctx.fillStyle = this.skinColor;
+    ctx.fillRect(-7, -18, 14, 14);
+    ctx.fillRect(-8, -16, 16, 10);
+
+    // Eyes (large, expressive)
     if (this.dir !== Direction.UP) {
-      ctx.fillRect(-3, -11, 2, 2);
-      ctx.fillRect(1, -11, 2, 2);
+      // Eye whites
       ctx.fillStyle = '#fff';
-      ctx.fillRect(-3, -12, 1, 1);
-      ctx.fillRect(1, -12, 1, 1);
+      ctx.fillRect(-5, -14, 5, 5);
+      ctx.fillRect(1, -14, 5, 5);
+      // Pupils
+      ctx.fillStyle = this.eyeColor;
+      ctx.fillRect(-4, -13, 3, 3);
+      ctx.fillRect(2, -13, 3, 3);
+      // Eye highlight
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(-4, -14, 1, 1);
+      ctx.fillRect(2, -14, 1, 1);
+
+      // Mouth / Expression
+      if (isWaiting) {
+        ctx.fillStyle = '#c44';
+        ctx.fillRect(-2, -8, 4, 2);
+      } else if (isIdle) {
+        // Sleepy closed eyes (override whites)
+        ctx.fillStyle = this.skinColor;
+        ctx.fillRect(-5, -14, 5, 5);
+        ctx.fillRect(1, -14, 5, 5);
+        ctx.fillStyle = this.eyeColor;
+        ctx.fillRect(-5, -12, 4, 1);
+        ctx.fillRect(1, -12, 4, 1);
+        // Floating "z"
+        ctx.fillStyle = '#aaf';
+        ctx.font = '6px "Press Start 2P", monospace';
+        const zzOff = Math.sin(t / 800) * 2;
+        ctx.fillText('z', 8, -16 + zzOff);
+      } else {
+        // Small smile
+        ctx.fillStyle = '#a55';
+        ctx.fillRect(-2, -8, 4, 1);
+      }
     }
 
-    // Mouth
-    if (!walk && this.dir === Direction.DOWN) {
-      ctx.fillStyle = '#944';
-      ctx.fillRect(-2, -7, 4, 1);
-    }
+    // Hair
+    this._drawHair(ctx);
 
-    // Hair / Hat
-    this._drawHat(ctx, t);
-
-    // Tool action effect
-    if (this.currentTool?.status === 'running') {
+    // Tool action sparkles (only when not walking)
+    if (this.currentTool?.status === 'running' && !walk) {
       this._drawToolAction(ctx, t);
     }
 
     ctx.restore();
   }
 
-  private _drawHat(ctx: CanvasRenderingContext2D, _t: number): void {
-    switch (this.hatType) {
-      case 0: // hair
-        ctx.fillStyle = this.hairColor;
-        ctx.fillRect(-6, -18, 12, 6);
-        ctx.fillRect(-7, -14, 3, 3);
-        ctx.fillRect(4, -14, 3, 3);
+  private _drawHair(ctx: CanvasRenderingContext2D): void {
+    ctx.fillStyle = this.hairColor;
+    switch (this.hairStyle) {
+      case 0: // Short messy
+        ctx.fillRect(-8, -20, 16, 6);
+        ctx.fillRect(-7, -18, 3, 4);
+        ctx.fillRect(5, -18, 3, 4);
+        // Spiky top
+        ctx.fillRect(-5, -22, 3, 3);
+        ctx.fillRect(0, -23, 3, 4);
+        ctx.fillRect(4, -21, 3, 2);
         break;
-      case 1: // cap
+      case 1: // Longer / side swept
+        ctx.fillRect(-8, -20, 16, 6);
+        ctx.fillRect(-9, -18, 4, 8);
+        ctx.fillRect(6, -18, 4, 6);
+        ctx.fillRect(-6, -22, 12, 3);
+        break;
+      case 2: // Beanie
         ctx.fillStyle = this.shirtColor;
-        ctx.fillRect(-7, -17, 14, 5);
-        ctx.fillRect(-8, -14, 4, 3);
+        ctx.fillRect(-8, -22, 16, 8);
+        ctx.fillRect(-9, -16, 18, 3);
+        ctx.fillStyle = 'rgba(0,0,0,0.15)';
+        ctx.fillRect(-9, -16, 18, 2);
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(-1, -24, 3, 3);
         break;
-      case 2: // wizard
-        ctx.fillStyle = '#7c00c8';
-        ctx.fillRect(-5, -22, 10, 10);
-        ctx.fillRect(-4, -26, 8, 6);
-        ctx.fillRect(-3, -30, 6, 6);
-        ctx.fillRect(-2, -33, 4, 5);
-        ctx.fillStyle = '#ff0';
-        ctx.fillRect(-1, -34, 2, 2);
-        break;
-      case 3: // bucket
-        ctx.fillStyle = '#8b5c2a';
-        ctx.fillRect(-7, -18, 14, 6);
-        ctx.fillRect(-8, -15, 16, 3);
+      case 3: // Headband + hair
+        ctx.fillRect(-8, -20, 16, 6);
+        ctx.fillRect(-7, -18, 3, 3);
+        ctx.fillRect(5, -18, 3, 3);
+        ctx.fillRect(-4, -22, 8, 3);
+        ctx.fillStyle = '#e44';
+        ctx.fillRect(-8, -17, 16, 2);
         break;
     }
   }
@@ -439,19 +442,15 @@ export class Character {
     const meta: ToolMeta = TOOL_META[this.currentTool?.name ?? ''] || TOOL_DEFAULT;
     const pulse = Math.sin(t / 200) * 0.4 + 0.6;
 
-    ctx.globalAlpha = pulse * 0.7;
+    ctx.globalAlpha = pulse * 0.6;
     ctx.fillStyle = meta.color;
 
-    const sparkPos: [number, number][] = [
-      [-12, -20], [12, -20], [-14, -5], [14, -5]
-    ];
-
+    const sparkPos: [number, number][] = [[-10, -22], [10, -22], [-12, -4], [12, -4]];
     sparkPos.forEach(([spx, spy], i) => {
-      const offset = Math.sin(t / 300 + i) * 3;
-      const size = 2 + Math.sin(t / 200 + i * 1.5) * 1;
+      const offset = Math.sin(t / 300 + i) * 2;
+      const size = 1.5 + Math.sin(t / 200 + i * 1.5) * 1;
       ctx.fillRect(spx + offset, spy + offset * 0.5, size, size);
     });
-
     ctx.globalAlpha = 1;
   }
 
@@ -472,14 +471,13 @@ export class Character {
     ctx.font = '7px "Press Start 2P", monospace';
     const tw = ctx.measureText(label).width;
     const tx2 = sx - tw / 2;
-    const ty2 = sy - 44;
+    const ty2 = sy - 32;
 
     ctx.fillStyle = this.isCodex ? 'rgba(0,40,100,0.85)' : 'rgba(0,0,0,0.7)';
     ctx.fillRect(tx2 - 3, ty2 - 9, tw + 6, 12);
     ctx.fillStyle = this.selected ? '#0ff' : this.isCodex ? '#58a6ff' : '#ccc';
     ctx.fillText(label, tx2, ty2);
 
-    // Phase tag below name
     if (this.session.status !== 'idle') {
       const phase = this._getPhaseTag();
       ctx.font = '5px "Press Start 2P", monospace';
@@ -505,7 +503,7 @@ export class Character {
 
   private _wrapText(text: string, maxW: number): string[] {
     if (!text) return [];
-    const charW = 4.2; // approx 7px monospace char width
+    const charW = 4.2;
     const maxChars = Math.floor(maxW / charW);
     const lines: string[] = [];
     for (let i = 0; i < text.length; i += maxChars) {
@@ -524,44 +522,41 @@ export class Character {
     const lineH = Character.BUBBLE_LINE_H;
     const maxContentW = Character.BUBBLE_MAX_W - pad * 2;
 
-    // Word-wrap preview text
     const previewLines = this._wrapText(preview, maxContentW);
 
-    // Compute bubble size
-    const labelW = meta.label.length * 8 + 20; // label + dots space
+    const labelW = meta.label.length * 8 + 20;
     const previewW = previewLines.length > 0
       ? Math.max(...previewLines.map(l => l.length * 4.2))
       : 0;
     const bw = Math.max(60, Math.min(Character.BUBBLE_MAX_W, Math.max(labelW, previewW) + pad * 2));
-    const contentLines = 1 + previewLines.length; // label row + preview rows
+    const contentLines = 1 + previewLines.length;
     const bh = contentLines * lineH + pad * 2;
 
     const bx = sx - bw / 2;
-    const by = sy - 35;
+    const by = sy - 26;
 
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.translate(bx, by);
     ctx.scale(scale, scale);
 
-    // Bubble background
     ctx.fillStyle = 'rgba(15,20,40,0.92)';
     ctx.strokeStyle = meta.color;
     ctx.lineWidth = 2;
     ctx.fillRect(0, -bh, bw, bh);
     ctx.strokeRect(0, -bh, bw, bh);
 
-    // Bubble tail (centered)
+    // Tail (points downward)
     ctx.fillStyle = 'rgba(15,20,40,0.92)';
     ctx.beginPath();
     ctx.moveTo(bw / 2 - 5, 0);
-    ctx.lineTo(bw / 2, 6);
+    ctx.lineTo(-12, 6);
     ctx.lineTo(bw / 2 + 5, 0);
     ctx.fill();
     ctx.strokeStyle = meta.color;
     ctx.beginPath();
     ctx.moveTo(bw / 2 - 5, 0);
-    ctx.lineTo(bw / 2, 6);
+    ctx.lineTo(-12, 6);
     ctx.lineTo(bw / 2 + 5, 0);
     ctx.stroke();
 
@@ -592,12 +587,16 @@ export class Character {
     const pulse = 0.7 + Math.sin(t / 300) * 0.3;
     ctx.save();
     ctx.globalAlpha = pulse;
+    // Larger two-tone yellow bubble
     ctx.fillStyle = '#ffcc00';
-    ctx.fillRect(sx - 6, sy - 57, 12, 13);
-    ctx.font = 'bold 9px "Press Start 2P", monospace';
+    ctx.fillRect(sx - 7, sy - 46, 14, 16);
+    ctx.fillStyle = '#ffd633';
+    ctx.fillRect(sx - 6, sy - 47, 12, 16);
+    // Exclamation mark
+    ctx.font = 'bold 10px "Press Start 2P", monospace';
     ctx.fillStyle = '#111';
     ctx.textAlign = 'center';
-    ctx.fillText('!', sx, sy - 47);
+    ctx.fillText('!', sx, sy - 34);
     ctx.textAlign = 'left';
     ctx.restore();
   }
@@ -611,36 +610,45 @@ export class Character {
     ctx.translate(16, 22);
 
     // Shadow
-    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
     ctx.beginPath();
-    ctx.ellipse(0, 8, 7, 3, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 10, 7, 3, 0, 0, Math.PI * 2);
     ctx.fill();
 
     // Legs
-    ctx.fillStyle = '#555';
-    ctx.fillRect(-5, 4, 4, 6);
-    ctx.fillRect(1, 4, 4, 6);
+    ctx.fillStyle = '#4a4a5a';
+    ctx.fillRect(-4, 4, 3, 8);
+    ctx.fillRect(1, 4, 3, 8);
 
     // Body
     ctx.fillStyle = this.shirtColor;
-    ctx.fillRect(-7, -4, 14, 10);
-    ctx.fillRect(-10, -3, 4, 8);
-    ctx.fillRect(6, -3, 4, 8);
-    ctx.fillStyle = this.skinColor;
-    ctx.fillRect(-10, 4, 4, 3);
-    ctx.fillRect(6, 4, 4, 3);
+    ctx.fillRect(-6, -4, 12, 10);
 
-    // Head
+    // Arms
+    ctx.fillRect(-9, -3, 3, 8);
+    ctx.fillRect(6, -3, 3, 8);
     ctx.fillStyle = this.skinColor;
-    ctx.fillRect(-6, -14, 12, 11);
-    ctx.fillStyle = '#222';
-    ctx.fillRect(-3, -11, 2, 2);
-    ctx.fillRect(1, -11, 2, 2);
+    ctx.fillRect(-9, 4, 3, 3);
+    ctx.fillRect(6, 4, 3, 3);
+
+    // Head (chibi proportions)
+    ctx.fillStyle = this.skinColor;
+    ctx.fillRect(-7, -18, 14, 14);
+    ctx.fillRect(-8, -16, 16, 10);
+
+    // Eyes with whites + colored pupils
     ctx.fillStyle = '#fff';
-    ctx.fillRect(-3, -12, 1, 1);
-    ctx.fillRect(1, -12, 1, 1);
+    ctx.fillRect(-5, -14, 5, 5);
+    ctx.fillRect(1, -14, 5, 5);
+    ctx.fillStyle = this.eyeColor;
+    ctx.fillRect(-4, -13, 3, 3);
+    ctx.fillRect(2, -13, 3, 3);
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(-4, -14, 1, 1);
+    ctx.fillRect(2, -14, 1, 1);
 
-    this._drawHat(ctx, 0);
+    // Hair
+    this._drawHair(ctx);
     ctx.restore();
   }
 }

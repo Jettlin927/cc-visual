@@ -1,4 +1,4 @@
-import type { ToolMeta, ToolPose } from './types.js';
+import type { ToolMeta, ZoneName } from './types.js';
 
 // ─── Tool metadata (icon, color, label) ──────────────────
 
@@ -55,24 +55,23 @@ export function getToolClass(name: string): string {
   return 'c-other';
 }
 
-// ─── Tool poses (arm positions for character animation) ──
-
-export const TOOL_POSES: Record<string, ToolPose> = {
-  Bash:      { leftArmY: -3, leftHandY: 3, rightArmY: -3, rightHandY: 4, propColor: null },
-  Read:      { leftArmY: -6, leftHandY: 1, rightArmY: -6, rightHandY: 1, propColor: null },
-  Edit:      { leftArmY: -3, leftHandY: 4, rightArmY: -10, rightHandY: -7, propColor: '#ff0' },
-  Write:     { leftArmY: -3, leftHandY: 4, rightArmY: -10, rightHandY: -7, propColor: '#ff0' },
-  Grep:      { leftArmY: -3, leftHandY: 4, rightArmY: -12, rightHandY: -10, propColor: null },
-  Glob:      { leftArmY: -3, leftHandY: 4, rightArmY: -12, rightHandY: -10, propColor: null },
-  Agent:     { leftArmY: -10, leftHandY: -7, rightArmY: -10, rightHandY: -7, propColor: null },
-  WebFetch:  { leftArmY: -3, leftHandY: 4, rightArmY: -10, rightHandY: -8, propColor: null },
-  WebSearch: { leftArmY: -3, leftHandY: 4, rightArmY: -10, rightHandY: -8, propColor: null },
+// ─── Zone mappings (tool/status → room zone) ───────────
+export const TOOL_ZONE: Record<string, ZoneName> = {
+  Bash: 'terminal', Read: 'bookshelf', Edit: 'workbench', Write: 'workbench',
+  Grep: 'search', Glob: 'search', Agent: 'comm',
+  WebFetch: 'comm', WebSearch: 'comm', Skill: 'comm',
+  ToolSearch: 'search', EnterPlanMode: 'workbench', ExitPlanMode: 'workbench',
+  TaskCreate: 'workbench', TaskUpdate: 'workbench', NotebookEdit: 'workbench',
+  exec_command: 'terminal', write_stdin: 'terminal',
+  read_file: 'bookshelf', write_file: 'workbench',
+  str_replace_based_edit_tool: 'workbench',
+  glob_search: 'search', grep_search: 'search',
+  web_search: 'comm', web_fetch: 'comm', shell_tool: 'terminal',
 };
 
-export const DEFAULT_POSE: ToolPose = {
-  leftArmY: -3, leftHandY: 4, rightArmY: -3, rightHandY: 4, propColor: null,
+export const STATUS_ZONE: Record<string, ZoneName> = {
+  running: 'terminal',
+  waiting: 'outside',
+  idle: 'rest',
 };
 
-export function getToolPose(name: string): ToolPose {
-  return TOOL_POSES[name] || DEFAULT_POSE;
-}

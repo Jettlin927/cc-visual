@@ -108,22 +108,35 @@ export const enum Direction {
 
 /** Tile type const enum */
 export const enum Tile {
-  GRASS    = 0,
-  GRASS2   = 1,
-  GRASS3   = 2,
-  PATH_H   = 3,
-  PATH_V   = 4,
-  PATH_X   = 5,
-  WATER    = 6,
-  WATER2   = 7,
-  TREE     = 8,
-  FLOWER_R = 9,
-  FLOWER_Y = 10,
-  ROCK     = 11,
-  CAMPFIRE = 12,
-  HOUSE    = 13,
-  FENCE_H  = 14,
-  FENCE_V  = 15,
+  // Outdoor
+  GRASS = 0, GRASS2 = 1, PATH = 2,
+  // Walls
+  WALL_TOP = 10, WALL_LEFT = 11, WALL_RIGHT = 12, WALL_BOTTOM = 13,
+  WALL_CORNER_TL = 14, WALL_CORNER_TR = 15,
+  WALL_CORNER_BL = 16, WALL_CORNER_BR = 17,
+  DOOR = 18, WINDOW = 19,
+  // Floors
+  FLOOR_WOOD = 20, FLOOR_WOOD2 = 21, FLOOR_CARPET = 22,
+  // Furniture
+  DESK_TERMINAL = 30, BOOKSHELF = 31, WORKBENCH = 32,
+  SEARCH_GLOBE = 33, COMM_STATION = 34, COUCH = 35,
+  // Indoor decor
+  PLANT = 40, LAMP = 41, CHAIR = 43,
+  // Outdoor scenery
+  TREE = 50, FLOWER_R = 51, FLOWER_Y = 52, FLOWER_B = 53,
+  FENCE_H = 54, FENCE_POST = 55,
+  LAMP_POST = 56, MAILBOX = 57,
+  POND = 58, POND2 = 59,
+  ROOF = 60, CHIMNEY = 61,
+  BUSH = 62, STEPPING_STONE = 63,
+}
+
+export type ZoneName = 'terminal' | 'bookshelf' | 'workbench' | 'search' | 'comm' | 'rest' | 'outside';
+
+export interface ZoneInfo {
+  tx: number;
+  ty: number;
+  label: string;
 }
 
 /** 2D tile map: map[y][x] = Tile */
@@ -134,15 +147,6 @@ export interface ToolMeta {
   icon: string;
   color: string;
   label: string;
-}
-
-/** Tool arm/hand pose for character animation */
-export interface ToolPose {
-  leftArmY: number;
-  leftHandY: number;
-  rightArmY: number;
-  rightHandY: number;
-  propColor: string | null;
 }
 
 /** SSE message from server */

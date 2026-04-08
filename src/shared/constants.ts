@@ -12,8 +12,9 @@ export const FOCUS_WINDOW_TIMEOUT_MS = 5000;
 
 // World
 export const TILE_SIZE = 32;
-export const MAP_W = 50;
-export const MAP_H = 36;
+export const MAP_W = 24;
+export const MAP_H = 20;
+export const DEPTH = 10;  // 2.5D front-face pixel offset
 
 // Camera
 export const CAMERA_LERP = 0.08;
