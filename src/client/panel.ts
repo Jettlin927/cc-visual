@@ -1,7 +1,7 @@
 import type { Session, ToolCall, ToolMeta } from '../shared/types.js';
 import { TOOL_META, TOOL_DEFAULT } from '../shared/tool-metadata.js';
 import { HISTORY_ITEMS } from '../shared/constants.js';
-import { prettyProject, fmtDuration } from './utils/formatters.js';
+import { prettyProject, fmtDuration, fmtTime, esc } from './utils/formatters.js';
 import type { Character } from './character.js';
 
 // ─── Module-private DOM refs ─────────────────────────────
@@ -13,6 +13,7 @@ let panelTool: HTMLElement;
 let panelReply: HTMLElement;
 let panelErrorsTitle: HTMLElement;
 let panelErrors: HTMLElement;
+let panelSlowest: HTMLElement;
 let panelHistory: HTMLElement;
 let sidePanel: HTMLElement;
 
@@ -24,6 +25,7 @@ export function initPanel(): void {
   panelReply   = document.getElementById('panel-reply')!;
   panelErrorsTitle = document.getElementById('panel-errors-title')!;
   panelErrors  = document.getElementById('panel-errors')!;
+  panelSlowest = document.getElementById('panel-slowest')!;
   panelHistory = document.getElementById('panel-history')!;
   sidePanel    = document.getElementById('side-panel')!;
 }
@@ -34,12 +36,6 @@ export function showPanel(): void {
 
 export function hidePanel(): void {
   sidePanel.classList.add('hidden');
-}
-
-function esc(s: string): string {
-  const d = document.createElement('div');
-  d.textContent = s || '';
-  return d.innerHTML;
 }
 
 function getPreview(input: Record<string, unknown> | undefined): string {
@@ -86,6 +82,7 @@ export async function fetchHistory(ch: Character): Promise<void> {
   panelErrors.innerHTML = '';
 
   try {
+    let allToolCalls: ToolCall[] = [];
     let toolCalls: ToolCall[];
     let lastAssistantText: string | null = null;
     let recentErrors: ToolCall[] = [];
@@ -93,13 +90,14 @@ export async function fetchHistory(ch: Character): Promise<void> {
     if (ch.session.source === 'codex') {
       const r = await fetch(`/api/codex-history?threadId=${encodeURIComponent(ch.session.sessionId)}`);
       const d = await r.json();
-      toolCalls = ((d.toolCalls || []) as ToolCall[]).slice(-HISTORY_ITEMS).reverse();
-      // Codex doesn't have lastAssistantText yet — extract errors from tool calls
+      allToolCalls = (d.toolCalls || []) as ToolCall[];
+      toolCalls = allToolCalls.slice(-HISTORY_ITEMS).reverse();
       recentErrors = toolCalls.filter(tc => tc.status === 'error').slice(0, 3);
     } else {
       const r = await fetch(`/api/transcript?path=${encodeURIComponent(ch.session.filePath)}`);
       const d = await r.json();
-      toolCalls = ((d.toolCalls || []) as ToolCall[]).slice(-HISTORY_ITEMS).reverse();
+      allToolCalls = (d.toolCalls || []) as ToolCall[];
+      toolCalls = allToolCalls.slice(-HISTORY_ITEMS).reverse();
       lastAssistantText = (d.lastAssistantText as string | null) ?? null;
       recentErrors = ((d.recentErrors || []) as ToolCall[]);
     }
@@ -123,6 +121,25 @@ export async function fetchHistory(ch: Character): Promise<void> {
       }).join('');
     } else {
       panelErrorsTitle.style.display = 'none';
+    }
+
+    // Render top 3 slowest
+    const slowest = [...allToolCalls]
+      .filter(tc => tc.duration != null && tc.duration > 0)
+      .sort((a, b) => (b.duration ?? 0) - (a.duration ?? 0))
+      .slice(0, 3);
+
+    if (slowest.length > 0) {
+      panelSlowest.innerHTML = slowest.map((tc: ToolCall) => {
+        const meta: ToolMeta = TOOL_META[tc.name] || TOOL_DEFAULT;
+        return `<div class="ph-item done" style="border-color:${meta.color}">
+          <span class="ph-name" style="color:${meta.color}">${meta.icon} ${esc(tc.name)}</span>
+          <span class="ph-dur">${fmtDuration(tc.duration)}</span>
+          <span class="ph-dur">${fmtTime(tc.timestamp)}</span>
+        </div>`;
+      }).join('');
+    } else {
+      panelSlowest.innerHTML = '<div style="font-size:7px;color:#555">No data</div>';
     }
 
     // Render history

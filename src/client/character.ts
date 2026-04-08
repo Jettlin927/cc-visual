@@ -412,6 +412,15 @@ export class Character {
     ctx.globalAlpha = 1;
   }
 
+  private _getPhaseTag(): { text: string; color: string } {
+    if (this.session.status === 'waiting') return { text: '等你确认', color: '#fa0' };
+    const name = this.currentTool?.name ?? '';
+    if (['Grep', 'Glob', 'Read'].includes(name)) return { text: '搜索中', color: '#0ff' };
+    if (['Edit', 'Write'].includes(name)) return { text: '编辑中', color: '#0f0' };
+    if (name === 'Bash') return { text: '执行命令', color: '#f0f' };
+    return { text: '工作中', color: '#888' };
+  }
+
   private _drawNameTag(ctx: CanvasRenderingContext2D, sx: number, sy: number): void {
     const label = this.displayLabel;
     ctx.font = '7px "Press Start 2P", monospace';
@@ -423,6 +432,19 @@ export class Character {
     ctx.fillRect(tx2 - 3, ty2 - 9, tw + 6, 12);
     ctx.fillStyle = this.selected ? '#0ff' : this.isCodex ? '#58a6ff' : '#ccc';
     ctx.fillText(label, tx2, ty2);
+
+    // Phase tag below name
+    if (this.session.status !== 'idle') {
+      const phase = this._getPhaseTag();
+      ctx.font = '5px "Press Start 2P", monospace';
+      const ptw = ctx.measureText(phase.text).width;
+      const ptx = sx - ptw / 2;
+      const pty = ty2 + 5;
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(ptx - 2, pty - 6, ptw + 4, 9);
+      ctx.fillStyle = phase.color;
+      ctx.fillText(phase.text, ptx, pty);
+    }
   }
 
   private _getToolPreview(): string {
