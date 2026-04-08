@@ -46,6 +46,7 @@ body {
 .hud-left  { display: flex; align-items: center; gap: 14px; }
 .logo-text { font-size: 11px; color: var(--cyan); text-shadow: 0 0 10px rgba(0,255,255,0.5); }
 .hud-badge { font-size: 8px; padding: 3px 8px; border: 2px solid var(--green); color: var(--green); }
+.hud-waiting { border-color: var(--orange); color: var(--orange); }
 .hud-time  { font-size: 10px; color: var(--muted); }
 
 /* ─── LAYOUT ─── */
@@ -506,4 +507,28 @@ body {
   border: 1px solid var(--cyan);
   color: var(--cyan);
   flex-shrink: 0;
+}
+
+/* ─── SEEN STATE ─── */
+.sess-seen-btn {
+  font-family: var(--px);
+  font-size: 5px;
+  padding: 1px 4px;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--muted);
+  cursor: pointer;
+  margin-left: 4px;
+  flex-shrink: 0;
+}
+.sess-seen-btn:hover {
+  color: var(--cyan);
+  border-color: var(--cyan);
+}
+
+.sess-item.seen {
+  opacity: 0.45;
+}
+.sess-item.seen:hover {
+  opacity: 0.7;
 }

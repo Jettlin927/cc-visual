@@ -22,6 +22,23 @@ let lastCallbacks: SidebarCallbacks | null = null;
 let filtersInitialized = false;
 let timerStarted = false;
 
+// ─── Seen sessions (localStorage) ──────────────────────
+const SEEN_KEY = 'cc-visual-seen-sessions';
+
+function loadSeen(): Set<string> {
+  try {
+    const raw = localStorage.getItem(SEEN_KEY);
+    if (raw) return new Set(JSON.parse(raw) as string[]);
+  } catch { /* ignore */ }
+  return new Set();
+}
+
+function saveSeen(set: Set<string>): void {
+  localStorage.setItem(SEEN_KEY, JSON.stringify([...set]));
+}
+
+const seenSessions: Set<string> = loadSeen();
+
 // ─── Helpers ────────────────────────────────────────────
 function timeAgo(ms: number): string {
   const s = Math.floor((Date.now() - ms) / 1000);
@@ -155,6 +172,18 @@ function renderFilters(list: Session[]): void {
   }
 }
 
+function updateHudWaiting(list: Session[]): void {
+  const el = document.getElementById('hud-waiting');
+  if (!el) return;
+  const count = list.filter(s => s.status === 'waiting').length;
+  if (count > 0) {
+    el.textContent = `⚠ ${count} waiting`;
+    el.style.display = '';
+  } else {
+    el.style.display = 'none';
+  }
+}
+
 function reRender(): void {
   if (!lastCallbacks) return;
   const container = document.getElementById('session-list');
@@ -174,6 +203,15 @@ export function renderSessionList(
   lastCallbacks = callbacks;
 
   renderFilters(list);
+  updateHudWaiting(list);
+
+  // Clean stale seen entries
+  for (const id of seenSessions) {
+    if (!list.some(s => s.sessionId === id && s.status === 'waiting')) {
+      seenSessions.delete(id);
+    }
+  }
+  saveSeen(seenSessions);
 
   const filtered = filterSessions(list);
 
@@ -304,6 +342,30 @@ function buildSessionItem(
       <span class="sess-ago">${ago}</span>
     </div>
   `;
+
+  // "已看" button for pending sessions
+  if (isPending) {
+    const isSeen = seenSessions.has(s.sessionId);
+    if (isSeen) el.classList.add('seen');
+
+    const seenBtn = document.createElement('button');
+    seenBtn.className = 'sess-seen-btn';
+    seenBtn.textContent = isSeen ? '✓' : '已看';
+    seenBtn.title = isSeen ? 'Mark as unseen' : 'Mark as seen';
+    seenBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (seenSessions.has(s.sessionId)) {
+        seenSessions.delete(s.sessionId);
+      } else {
+        seenSessions.add(s.sessionId);
+      }
+      saveSeen(seenSessions);
+      reRender();
+    });
+
+    const topRow = el.querySelector('.sess-top');
+    if (topRow) topRow.appendChild(seenBtn);
+  }
 
   el.addEventListener('click', () => callbacks.onSelect(s.sessionId));
   return el;
