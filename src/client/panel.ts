@@ -1,7 +1,7 @@
 import type { Session, ToolCall, ToolMeta } from '../shared/types.js';
 import { TOOL_META, TOOL_DEFAULT } from '../shared/tool-metadata.js';
 import { HISTORY_ITEMS } from '../shared/constants.js';
-import { prettyProject, fmtDuration, fmtTime, esc, truncate } from './utils/formatters.js';
+import { prettyProject, fmtDuration, fmtTime, esc, truncate, focusWindow } from './utils/formatters.js';
 import type { Character } from './character.js';
 import { showToast } from './notifications.js';
 import { togglePin, isPinned } from './sidebar.js';
@@ -75,8 +75,24 @@ export function renderPanel(ch: Character, s: Session): void {
   panelProject.textContent = prettyProject(ch.session.project)
     + (ch.session.source === 'codex' && ch.session.model ? ` \u00B7 ${ch.session.model}` : '');
 
-  // Action buttons
+  // Action buttons — FOCUS button always first
   panelActions.innerHTML = '';
+
+  const focusBtn = document.createElement('button');
+  focusBtn.className = 'px-btn';
+  focusBtn.style.background = 'var(--orange)';
+  focusBtn.style.color = '#000';
+  focusBtn.style.borderColor = 'var(--orange)';
+  focusBtn.textContent = '▶ FOCUS';
+  focusBtn.title = 'Focus the terminal window for this session';
+  focusBtn.addEventListener('click', () => {
+    const pid = 'pid' in s && typeof s.pid === 'number' ? s.pid : undefined;
+    focusWindow({ pid, project: s.project })
+      .then(msg => showToast(msg))
+      .catch(err => showToast(`Focus failed: ${err instanceof Error ? err.message : 'network error'}`));
+  });
+  panelActions.appendChild(focusBtn);
+
   const copyBtn = document.createElement('button');
   copyBtn.className = 'px-btn';
   copyBtn.textContent = '📋 COPY ID';
@@ -141,8 +157,8 @@ export function renderPanel(ch: Character, s: Session): void {
     const meta: ToolMeta = TOOL_META[tool.name] || TOOL_DEFAULT;
     panelTool.innerHTML = `
       <div style="color:${meta.color};font-size:10px;margin-bottom:4px">${meta.icon} ${tool.name}</div>
-      <div style="color:#888;font-size:7px;word-break:break-all;line-height:1.5">${esc(getPreview(tool.input as Record<string, unknown> | undefined))}</div>
-      <div style="color:${statusColor(tool.status)};font-size:7px;margin-top:4px">${tool.status.toUpperCase()}</div>
+      <div style="color:#888;font-size:11px;word-break:break-all;line-height:1.5">${esc(getPreview(tool.input as Record<string, unknown> | undefined))}</div>
+      <div style="color:${statusColor(tool.status)};font-size:11px;margin-top:4px">${tool.status.toUpperCase()}</div>
     `;
   } else {
     panelTool.innerHTML = `<span style="color:#555">IDLE</span>`;
@@ -168,6 +184,9 @@ export async function fetchHistory(ch: Character): Promise<void> {
       allToolCalls = (d.toolCalls || []) as ToolCall[];
       toolCalls = allToolCalls.slice(-HISTORY_ITEMS).reverse();
       recentErrors = toolCalls.filter(tc => tc.status === 'error').slice(0, 3);
+      // Codex stores traces, not conversation text — show title instead
+      const title = 'title' in ch.session ? (ch.session.title as string) : '';
+      if (title) lastAssistantText = title;
     } else {
       const r = await fetch(`/api/transcript?path=${encodeURIComponent(ch.session.filePath)}`);
       if (!r.ok) throw new Error(`API ${r.status}`);
@@ -185,7 +204,9 @@ export async function fetchHistory(ch: Character): Promise<void> {
     if (lastAssistantText) {
       panelReply.textContent = truncate(lastAssistantText, 200);
     } else {
-      panelReply.textContent = 'No reply yet';
+      panelReply.textContent = ch.session.source === 'codex'
+        ? 'Codex: reply not available'
+        : 'No reply yet';
     }
 
     // Render errors
@@ -215,7 +236,7 @@ export async function fetchHistory(ch: Character): Promise<void> {
         </div>`;
       }).join('');
     } else {
-      panelSlowest.innerHTML = '<div style="font-size:7px;color:#555">No data</div>';
+      panelSlowest.innerHTML = '<div style="font-size:11px;color:#555">No data</div>';
     }
 
     // Render history
@@ -228,6 +249,6 @@ export async function fetchHistory(ch: Character): Promise<void> {
     }).join('');
   } catch (err) {
     panelReply.textContent = 'Failed to load';
-    panelSlowest.innerHTML = `<div style="font-size:7px;color:var(--red)">${esc(String(err))}</div>`;
+    panelSlowest.innerHTML = `<div style="font-size:11px;color:var(--red)">${esc(String(err))}</div>`;
   }
 }
